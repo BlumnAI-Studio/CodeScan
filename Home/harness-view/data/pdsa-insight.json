@@ -1,83 +1,107 @@
 {
   "_description": "PDSA Learning surface — bilingual EN/KO. Default audience: English. `sources[].title`, `tried[]`, `solved[]`, `remaining[]`, `learned.lead`, `learned.body` use `{ en, ko }` shape. Scalars (date/time/category/file/analyzedAt/windowDays) stay language-neutral. PDSA UPDATE mode in the harness-view-build skill must emit both languages.",
-  "analyzedAt": "2026-05-17",
+  "analyzedAt": "2026-05-18",
   "windowDays": 14,
   "sources": [
     {
-      "date": "2026-05-17", "time": "14:00", "category": "tamer",
-      "file": "harness/logs/tamer/2026-05-17-14-00-implement-install-distribution.md",
+      "date": "2026-05-18", "time": "01:16", "category": "tamer",
+      "file": "harness/logs/tamer/2026-05-18-01-16-add-language-and-actor-experts.md",
       "title": {
-        "en": "Implement install/distribution per the v1 confirmed plan — release.yml matrix CI, install-win.ps1, install.sh, winget portable manifest, Homebrew tap formula, npm postinstall wrapper, plus a packaging README that ties them together",
-        "ko": "v1 확정안에 따라 install/distribution 1차 구현 — release.yml 매트릭스 CI, install-win.ps1, install.sh, winget portable 매니페스트, Homebrew tap formula, npm postinstall 래퍼 + packaging 통합 README"
+        "en": "Harness v1.2.0 — add language-analyzer-keeper, actor-toolkit-scout, semantic-bridge-architect agents plus two knowledge files (language-analyzer-patterns, actor-model-cross-toolkit) and the actor-graph-extension engine",
+        "ko": "하네스 v1.2.0 — language-analyzer-keeper, actor-toolkit-scout, semantic-bridge-architect 에이전트 + 지식 2개 (language-analyzer-patterns, actor-model-cross-toolkit) + actor-graph-extension 엔진 추가"
       }
     },
     {
-      "date": "2026-05-17", "time": "12:00", "category": "tamer",
-      "file": "harness/logs/tamer/2026-05-17-12-00-add-initial-experts.md",
+      "date": "2026-05-18", "time": "01:04", "category": "test-sentinel",
+      "file": "harness/logs/test-sentinel/2026-05-18-01-04-actor-hierarchy-cross-toolkit.md",
       "title": {
-        "en": "Initial experts planted under tamer — regex-safety-guard (GeneratedRegex AOT safety + backtracking), aot-compatibility-scout (IL/AOT warning surface), test-sentinel (7-language matrix coverage), plus the test-audit engine that orchestrates all three",
-        "ko": "tamer 아래 초기 전문가 투입 — regex-safety-guard (GeneratedRegex AOT 안전성 + 백트래킹), aot-compatibility-scout (IL/AOT 경고 표면), test-sentinel (7개 언어 매트릭스 커버리지) + 세 명을 오케스트레이션하는 test-audit 엔진"
+        "en": "Actor hierarchy fixture extended to Java Akka Classic (untyped) and Kotlin Pekko Typed — cross-toolkit regex limit matrix shows 4 parent-child surfaces, only 1 catches by accident (lambda+new)",
+        "ko": "액터 hierarchy fixture 가 Java Akka Classic (untyped) + Kotlin Pekko Typed 로 확장 — 크로스 툴킷 정규식 한계 매트릭스가 4가지 부모-자식 표면을 보이고 1개만 우연히 잡힘 (lambda+new)"
+      }
+    },
+    {
+      "date": "2026-05-18", "time": "00:53", "category": "test-sentinel",
+      "file": "harness/logs/test-sentinel/2026-05-18-00-53-akka-actor-hierarchy-fixture.md",
+      "title": {
+        "en": "csharp-akka fixture lands — Akka.NET 1.5 actors with two parent variants (lambda+new vs typeof(T)) to surface where regex catches vs misses parent-child actor spawn",
+        "ko": "csharp-akka fixture 등장 — Akka.NET 1.5 액터 + 부모 두 변형 (lambda+new vs typeof(T)) 로 정규식이 부모-자식 액터 spawn 을 잡는 지점과 놓치는 지점을 노출"
+      }
+    },
+    {
+      "date": "2026-05-18", "time": "00:42", "category": "test-sentinel",
+      "file": "harness/logs/test-sentinel/2026-05-18-00-42-language-analyzer-refactor.md",
+      "title": {
+        "en": "Per-language analyzer split — 9 ILanguageAnalyzer impls in Services/Analyzers/Languages/ resolve 9 regressions surfaced by the multi-language e2e matrix; 85 tests → 108 tests (23 new regression fixtures)",
+        "ko": "언어별 분석기 분리 — Services/Analyzers/Languages/ 의 9개 ILanguageAnalyzer 구현체가 다국어 e2e 매트릭스에서 노출된 9건의 회귀를 해결; 85 테스트 → 108 테스트 (23개 신규 회귀 fixture)"
+      }
+    },
+    {
+      "date": "2026-05-18", "time": "00:16", "category": "test-sentinel",
+      "file": "harness/logs/test-sentinel/2026-05-18-00-16-multilang-sample-e2e.md",
+      "title": {
+        "en": "Multi-language sample harness lands — TestSample/{csharp, java, kotlin, javascript, typescript, php, python, go, rust, cpp} each builds the same World+Speaker OOP, exposing where the shared regex engine drops edges per language",
+        "ko": "다국어 샘플 하네스 등장 — TestSample/{csharp, java, kotlin, javascript, typescript, php, python, go, rust, cpp} 가 각각 동일 World+Speaker OOP 를 빌드, 공유 정규식 엔진이 언어별로 어떤 엣지를 떨어뜨리는지 노출"
       }
     }
   ],
   "tried": [
     {
-      "en": "Cut v0.4.0 from a clean release.yml pipeline (matrix: win-x64 / linux-x64 / linux-arm64 / osx-x64 / osx-arm64) — but osx-x64 sat queued indefinitely on the constrained macos-13 runner pool, blocking the publish step",
-      "ko": "깨끗한 release.yml 파이프라인 (matrix: win-x64 / linux-x64 / linux-arm64 / osx-x64 / osx-arm64) 에서 v0.4.0 컷 — 그러나 osx-x64 가 macos-13 러너 풀 부족으로 큐에 영구 대기, publish 단계 차단"
+      "en": "Run the 9-language regex strategy as one shared `AnalyzeBraceLanguage` for 9 languages — but the brace walker pop'd currentClass on the same line as the declaration (Allman style), C#/PHP started binding methods to [Global], and per-language fixes were impossible because every patch hit the other 8 languages",
+      "ko": "9개 언어를 하나의 공유 `AnalyzeBraceLanguage` 로 처리 — 그러나 brace walker 가 class 선언과 동일 라인에서 currentClass 를 pop (Allman 스타일), C#/PHP 가 메서드를 [Global] 로 바인딩하기 시작했고, 모든 패치가 다른 8개 언어를 흔들기 때문에 언어별 수정이 불가능"
     },
     {
-      "en": "Drop osx-x64 from the v1 matrix entirely (Intel Mac → v2), then re-tag v0.4.0; published 4-binary release successfully and validated install-win.ps1 on the host machine",
-      "ko": "v1 매트릭스에서 osx-x64 를 완전 제외 (Intel Mac → v2) 후 v0.4.0 재태그; 4-바이너리 릴리즈가 성공적으로 게시되고 호스트에서 install-win.ps1 검증"
+      "en": "Try to fix the Kotlin `class X(name: String) : Person(...)` primary-constructor noise inside the shared analyzer — but `[^{:]*` greedy matched the `name: String` colon as if it were the inheritance colon, dragging `String)` into the base-type list",
+      "ko": "공유 분석기 안에서 Kotlin `class X(name: String) : Person(...)` primary-constructor 노이즈 수정 시도 — 그러나 `[^{:]*` greedy 가 `name: String` 의 콜론을 상속 콜론으로 매칭, `String)` 를 base-type 목록으로 끌고 옴"
     },
     {
-      "en": "Validate the same v0.4.0 binary on WSL Debian via install.sh — `codescan projects` immediately blew up with DllNotFoundException for e_sqlite3, since PublishSingleFile by default keeps native libs in publish/ rather than embedding them in the bundle",
-      "ko": "동일한 v0.4.0 바이너리를 WSL Debian 에서 install.sh 로 검증 — `codescan projects` 가 e_sqlite3 DllNotFoundException 으로 즉시 폭발; PublishSingleFile 기본값이 네이티브 라이브러리를 번들에 임베드하지 않고 publish/ 에 별도로 두기 때문"
+      "en": "Try to make the existing strategy catch parent-child actor edges by treating `Context.ActorOf<T>()` / `Props.create(T.class)` / `context.spawn(...)` as object creation — but none of those expressions contain `new`, so the regex `creates` rule cannot reach them; only the Akka.NET `Props.Create(() => new T())` form catches by accident, and even then the parent-child meaning is erased into a generic `creates` edge",
+      "ko": "기존 전략이 `Context.ActorOf<T>()` / `Props.create(T.class)` / `context.spawn(...)` 를 객체 생성으로 처리해서 부모-자식 액터 엣지를 잡으려 시도 — 그러나 어느 표현에도 `new` 가 없어서 정규식 `creates` 규칙이 닿을 수 없음; Akka.NET 의 `Props.Create(() => new T())` 형식만 우연히 잡히고, 그것도 부모-자식 의미가 일반 `creates` 엣지로 사라짐"
     },
     {
-      "en": "Ship v0.4.1 with `IncludeNativeLibrariesForSelfExtract=true` plus a CI smoke test step (--version + projects on every native-arch build) so future native-lib regressions fail the release job, not the user's first launch",
-      "ko": "`IncludeNativeLibrariesForSelfExtract=true` + CI smoke test 단계 (모든 네이티브-arch 빌드마다 --version + projects 실행) 를 포함한 v0.4.1 출시 — 향후 네이티브-라이브러리 리그레션이 사용자 첫 실행이 아니라 릴리즈 잡에서 실패하도록"
-    },
-    {
-      "en": "Bootstrap the Homebrew tap repo (`psmon/homebrew-codescan`) directly via `gh repo create --source=. --push`, then push a formula fix once `brew install` exposed that Homebrew auto-enters the tarball's single top-level dir, so `bin.install \"codescan/codescan\"` was resolving to `codescan/codescan/codescan`",
-      "ko": "`gh repo create --source=. --push` 로 Homebrew tap 레포 (`psmon/homebrew-codescan`) 직접 부트스트랩 후, `brew install` 이 Homebrew 가 tarball 의 단일 top-level dir 로 자동 chdir 한다는 사실을 노출하자 formula fix 푸시 — `bin.install \"codescan/codescan\"` 가 `codescan/codescan/codescan` 으로 풀려서 ENOENT"
+      "en": "Try to register a generic `subgraph Repo[/]` label in the workflow-graph.json release-pipeline diagram — mermaid 10.9.6 parsed `[/]` as the opening of a trapezoid node, broke the entire source-files diagram with a 'Syntax error in text' fallback",
+      "ko": "workflow-graph.json release-pipeline 다이어그램에 일반적인 `subgraph Repo[/]` 라벨 등록 시도 — mermaid 10.9.6 이 `[/]` 를 사다리꼴 노드 시작으로 파싱, source-files 다이어그램 전체를 'Syntax error in text' fallback 으로 깨뜨림"
     }
   ],
   "solved": [
     {
-      "en": "v0.4.2 ships end-to-end clean: 4-binary release with smoke-tested SQLite, live Homebrew tap (`brew tap psmon/codescan && brew install codescan` works), pre-generated winget manifest validated by `winget validate` and installable locally via the LocalManifestFiles opt-in, plus a packaging/winget/update-manifests.sh helper that mirrors the homebrew/update-formula.sh pattern",
-      "ko": "v0.4.2 가 end-to-end 깔끔하게 출시: SQLite smoke-test 까지 거친 4-바이너리 릴리즈, 라이브 Homebrew tap (`brew tap psmon/codescan && brew install codescan` 동작), `winget validate` 통과 + LocalManifestFiles opt-in 으로 로컬 설치 가능한 사전 생성 winget 매니페스트, packaging/winget/update-manifests.sh 헬퍼가 homebrew/update-formula.sh 패턴 미러링"
+      "en": "Replace the 9-language shared brace walker with `ILanguageAnalyzer` + `LanguageAnalyzerRegistry` — each language now owns its regex catalog under `Services/Analyzers/Languages/`. Pending-class-on-brace pattern in the shared `WalkBraceLanguage` helper handles Allman/K&R together. Test count went from 85 → 108 (23 new regression fixtures in `LanguageAnalyzerTests.cs`), and the matrix now reads inherits 10/10 (was 8/10), creates 9.5/10 (was 7/10), imports 10/10 (was 9/10).",
+      "ko": "9개 언어 공유 brace walker 를 `ILanguageAnalyzer` + `LanguageAnalyzerRegistry` 로 교체 — 각 언어가 `Services/Analyzers/Languages/` 아래 자기 정규식 카탈로그를 소유한다. 공유 `WalkBraceLanguage` 헬퍼의 pending-class-on-brace 패턴이 Allman/K&R 을 함께 처리. 테스트 수가 85 → 108 (`LanguageAnalyzerTests.cs` 의 23개 신규 회귀 fixture), 매트릭스가 inherits 10/10 (8/10 → ), creates 9.5/10 (7/10 → ), imports 10/10 (9/10 → ) 로 향상."
     },
     {
-      "en": "Direct script installers (install-win.ps1 + install.sh) verified end-to-end on Windows and WSL Debian — both download asset, verify SHA256 against checksums.txt, install to user-local path, and leave ~/.codescan/{db,logs,config} untouched",
-      "ko": "직접 스크립트 인스톨러 (install-win.ps1 + install.sh) 가 Windows + WSL Debian 에서 end-to-end 검증 — 자산 다운로드, checksums.txt 기준 SHA256 검증, 사용자-로컬 경로 설치, ~/.codescan/{db,logs,config} 보존"
+      "en": "Land 13 buildable e2e samples (`TestSample/` — 10 OOP + 3 actor) and verify the actor trio (csharp-akka / java-akka / kotlin-pekko) via `docker build` + `docker run`. The matrix that comes out of those samples is now the single source of truth for what regex catches, what only semantic analysis can catch, and where new graph edge types (`spawns_child`, `receives_message`, `sends_message_to`) are needed.",
+      "ko": "13개 빌드 가능 e2e 샘플 (`TestSample/` — 10 OOP + 3 액터) 안착 + 액터 3종 (csharp-akka / java-akka / kotlin-pekko) 을 `docker build` + `docker run` 로 검증. 이 샘플들에서 나오는 매트릭스가 이제 정규식이 잡는 것, 의미 분석만 잡을 수 있는 것, 신규 그래프 엣지 (`spawns_child`, `receives_message`, `sends_message_to`) 가 필요한 지점의 단일 출처."
     },
     {
-      "en": "README split into English (default) + README-KO.md (mirrored Korean) with a top-of-file language switcher and the new 'Why AOT?' bonus section linking to AgentZeroLite as the sibling on-device-model research project",
-      "ko": "README 를 영문 (기본) + README-KO.md (미러링된 한국어) 로 분리, 파일 상단 언어 스위처 + 자매 온디바이스-모델 연구 프로젝트로 AgentZeroLite 를 연결하는 새 'Why AOT?' 보너스 섹션"
+      "en": "Replace `subgraph Repo[/]` with `subgraph Repo[Repo root]` in the release-pipeline sourceMermaid — mermaid 10.9.6 now parses the source-files diagram cleanly. Same pass added a `Services/Analyzers/` subgraph to the scan-index-pipeline sourceMermaid so the v1.2.0 per-language layout is visible from the Workflow menu.",
+      "ko": "release-pipeline sourceMermaid 의 `subgraph Repo[/]` 를 `subgraph Repo[Repo root]` 로 교체 — mermaid 10.9.6 이 source-files 다이어그램을 깨끗하게 파싱한다. 동일 작업에서 scan-index-pipeline sourceMermaid 에 `Services/Analyzers/` subgraph 를 추가, v1.2.0 의 언어별 레이아웃이 Workflow 메뉴에서 보이도록 함."
+    },
+    {
+      "en": "Plant 3 specialist agents in harness v1.2.0 — `language-analyzer-keeper` (owns the 9-language regex catalog + regression fixture mapping), `actor-toolkit-scout` (tracks Akka.NET / Akka Classic / Pekko Typed pattern differences), `semantic-bridge-architect` (designs the Docker-isolated compiler plan that picks up where regex hits its ceiling). The accompanying actor-graph-extension engine is the 3-agent workflow that measures actor fixtures and identifies edges only semantic analysis can add.",
+      "ko": "하네스 v1.2.0 에 전문가 3명 식수 — `language-analyzer-keeper` (9개 언어 정규식 카탈로그 + 회귀 fixture 매핑 소유), `actor-toolkit-scout` (Akka.NET / Akka Classic / Pekko Typed 패턴 차이 추적), `semantic-bridge-architect` (정규식 한계 너머를 이어받는 도커 격리 컴파일러 플랜 설계). 동반된 actor-graph-extension 엔진이 액터 fixture 를 측정하고 의미 분석만 추가할 수 있는 엣지를 식별하는 3-에이전트 워크플로우."
     }
   ],
   "remaining": [
     {
-      "en": "Submit the winget manifest to microsoft/winget-pkgs so `winget install psmon.CodeScan` works without the LocalManifestFiles opt-in — manifest is ready at packaging/winget/manifests/p/psmon/CodeScan/0.4.2/, just needs a fork+PR or a wingetcreate run",
-      "ko": "`winget install psmon.CodeScan` 가 LocalManifestFiles opt-in 없이 동작하도록 winget 매니페스트를 microsoft/winget-pkgs 에 제출 — 매니페스트는 packaging/winget/manifests/p/psmon/CodeScan/0.4.2/ 에 준비됨, fork+PR 또는 wingetcreate 실행만 남음"
+      "en": "Two Kotlin regressions surfaced by the typed-actor fixture remain open — (R1) `class X private constructor(...) : Y` inherits is missed because the regex doesn't absorb the `private constructor` modifier sequence, and (R2) the super-call `Y(args)` in `class X : Y(args)` is misclassified as a `creates` edge. Both have failing-style fixtures ready in the cross-toolkit log; KotlinAnalyzer regex needs modifier absorption + a class-decl-line super-call exclusion.",
+      "ko": "typed-actor fixture 에서 노출된 2건의 Kotlin 회귀가 열려 있음 — (R1) `class X private constructor(...) : Y` 의 inherits 가 누락됨 (regex 가 `private constructor` modifier 시퀀스를 흡수하지 않기 때문), (R2) `class X : Y(args)` 의 super-call `Y(args)` 가 `creates` 엣지로 잘못 분류됨. 두 회귀 모두 크로스 툴킷 로그에 failing-style fixture 준비됨; KotlinAnalyzer regex 가 modifier 흡수 + class 선언 라인의 super-call 제외 필요."
     },
     {
-      "en": "Publish codescan-cli to the npm registry so Linux users can `npm install -g codescan-cli` — the wrapper package itself is built and the postinstall hook is tested against the GitHub Release, just needs `npm publish --access public` with NPM_TOKEN configured",
-      "ko": "Linux 사용자가 `npm install -g codescan-cli` 할 수 있도록 codescan-cli 를 npm 레지스트리에 publish — 래퍼 패키지 자체는 빌드되어 있고 postinstall 훅이 GitHub Release 대상으로 테스트됨, NPM_TOKEN 설정 후 `npm publish --access public` 만 남음"
+      "en": "Start Phase 1 of the semantic-Docker plan — the natural first target is Akka.NET (Roslyn) because it dogfoods (CodeScan itself is .NET) and Pekko Typed because `AbstractBehavior<T>` makes the dispatch table explicit at the type-parameter level. Both targets have ready fixtures in `TestSample/csharp-akka/` and `TestSample/kotlin-pekko/`; the matcher pseudo-code is in `harness/knowledge/actor-model-cross-toolkit.md`.",
+      "ko": "시맨틱-도커 플랜 Phase 1 시작 — 자연스러운 첫 타겟은 Akka.NET (Roslyn — CodeScan 자체가 .NET 이라 dogfooding 가능) 과 Pekko Typed (`AbstractBehavior<T>` 가 타입 파라미터 레벨에서 dispatch table 을 명시). 두 타겟 모두 `TestSample/csharp-akka/` 와 `TestSample/kotlin-pekko/` 에 준비된 fixture; 매처 의사코드는 `harness/knowledge/actor-model-cross-toolkit.md` 안에."
     },
     {
-      "en": "Flip the three `if: false` channel-publisher jobs in release.yml to `true` once each channel has gone through one successful manual submission, so future releases auto-update all three channels",
-      "ko": "각 채널이 한 번씩 수동 제출에 성공한 뒤 release.yml 의 3개 `if: false` 채널-퍼블리셔 잡을 `true` 로 전환해 향후 릴리즈가 3개 채널을 자동 갱신하도록"
+      "en": "Add 3 new graph edge types (`spawns_child`, `receives_message`, `sends_message_to`) to GraphModels so the semantic-Docker images have an in-graph home for what they extract. Until those edges exist, parent-child actor relationships have to ride on top of `creates` and lose all meaning.",
+      "ko": "GraphModels 에 신규 그래프 엣지 3종 (`spawns_child`, `receives_message`, `sends_message_to`) 추가 — 시맨틱-도커 이미지가 추출하는 것의 그래프 내 안식처를 마련. 그 엣지가 없는 한 부모-자식 액터 관계가 `creates` 위에 얹혀 의미를 모두 잃는다."
     }
   ],
   "learned": {
     "lead": {
-      "en": "Release pipelines fail silently in two ways: (1) build succeeds with wrong artifacts (e.g. native libs left next to the binary in publish/), and (2) artifacts succeed but users can't reach them (channel manifest not in the official registry). The fix in both cases is to push the verification *into CI* — a one-line `codescan projects` smoke test catches (1), and a per-channel local-install validation step catches (2) before a release is cut.",
-      "ko": "릴리즈 파이프라인은 두 가지 방식으로 조용히 실패한다: (1) 빌드는 성공이지만 산출물이 잘못됨 (예: 네이티브 lib 가 publish/ 에 바이너리 옆에 남음), (2) 산출물은 성공이지만 사용자가 도달할 수 없음 (채널 매니페스트가 공식 레지스트리에 없음). 두 경우 모두 해결책은 검증을 *CI 안으로* 밀어 넣는 것 — 한 줄 `codescan projects` smoke test 가 (1) 을, 채널별 로컬-설치 검증 단계가 릴리즈 컷 전에 (2) 를 잡는다."
+      "en": "When one engine serves many languages, fixing one language always breaks another — the cure isn't a smarter regex, it's structural separation. Move the dispatch up to a registry, give each language its own class, and let the shared helpers stay genuinely shared (brace walking, type-name normalisation) while the language-specific rules live in exactly one place. Once that's done, the limit of regex becomes visible: it's not a tuning problem, it's an information problem — toolkit-spec relationships (actor parent-child) live in function calls without `new`, where token matching cannot reach.",
+      "ko": "한 엔진이 여러 언어를 처리할 때, 한 언어를 고치면 항상 다른 언어가 깨진다 — 처방은 더 똑똑한 정규식이 아니라 구조 분리다. dispatch 를 registry 로 올리고, 각 언어에 자기 클래스를 주고, 공유 헬퍼는 진짜 공유가 가능한 것만 (brace 탐색, 타입명 정규화) 남기고, 언어별 규칙은 정확히 한 곳에 둔다. 그 작업이 끝나면 정규식의 한계가 보인다: 튜닝 문제가 아니라 정보 문제 — 툴킷-스펙 관계 (액터 부모-자식) 는 `new` 없는 함수 호출에 살고, 토큰 매칭은 거기 닿을 수 없다."
     },
     "body": {
-      "en": "v0.4.0 → v0.4.1 → v0.4.2 made the pattern visible. v0.4.0 passed all build jobs but only worked on Windows because the host machine happened to have a leftover e_sqlite3.dll from an older deploy-win.ps1 install; the cleanly-installed Linux binary crashed on first SQLite call. v0.4.1 fixed the underlying cause (`IncludeNativeLibrariesForSelfExtract=true`) *and* added a CI smoke step that actually runs the binary, so the same class of regression can't ship again — that step now blocks the release job before the GitHub Release publish step ever runs. v0.4.2 then extended the same verify-in-CI thinking to the channels: every release generates a winget manifest under packaging/winget/manifests/p/psmon/CodeScan/<version>/ with the real SHA256 from checksums.txt, and the update-manifests.sh + update-formula.sh helpers keep the substitution logic identical across channels. Channel publishers (winget/Homebrew/npm) are still `if: false` until each has been manually exercised once — once a channel has been proven, flipping the gate makes future releases atomic across the GitHub Release + all three channels.",
-      "ko": "v0.4.0 → v0.4.1 → v0.4.2 가 그 패턴을 가시화했다. v0.4.0 은 모든 빌드 잡을 통과했지만 Windows 에서만 동작 — 호스트 머신에 옛 deploy-win.ps1 설치에서 남은 e_sqlite3.dll 이 우연히 있어서. 깨끗하게 설치한 Linux 바이너리는 첫 SQLite 호출에서 크래시. v0.4.1 이 근본 원인 (`IncludeNativeLibrariesForSelfExtract=true`) 을 고치고 *동시에* 바이너리를 실제로 실행하는 CI smoke 단계를 추가 — 같은 유형의 리그레션은 다시는 출시될 수 없다 (GitHub Release publish 단계가 실행되기 전에 그 단계가 잡 차단). v0.4.2 는 이 verify-in-CI 사고를 채널로 확장: 모든 릴리즈가 packaging/winget/manifests/p/psmon/CodeScan/<version>/ 에 checksums.txt 의 실제 SHA256 으로 winget 매니페스트를 생성, update-manifests.sh + update-formula.sh 헬퍼가 채널 간 치환 로직을 동일하게 유지. 채널 퍼블리셔 (winget/Homebrew/npm) 는 각각 한 번씩 수동 검증되기 전까지 `if: false` — 채널이 입증되면 게이트를 풀어 향후 릴리즈가 GitHub Release + 3개 채널을 원자적으로 동시 갱신."
+      "en": "The 9 regressions surfaced by `TestSample/` weren't independent bugs — they were one structural bug wearing 9 masks. Once Services/Analyzers/Languages/ split each language into its own ILanguageAnalyzer, each fix landed in one file and stayed there: CSharpAnalyzer absorbed the Allman pending-class-on-brace pattern without breaking Java/Kotlin/PHP; RustAnalyzer's `impl Trait for Struct` + group-import expansion stayed Rust-local; GoAnalyzer added a struct-body embedded-field walker without leaking into anything else; CppAnalyzer's make_unique / make_shared additions didn't touch the C# new pattern. 23 new regression fixtures in LanguageAnalyzerTests.cs now sit between each fix and its return — touch one language's rule, only that language's tests can fail. The companion lesson came from the actor fixtures (csharp-akka / java-akka / kotlin-pekko). The same 'WorldActor parents EnSpeakerActor' relationship is expressed 5+ ways across the three toolkits: `Props.Create(() => new T())`, `Props.Create(typeof(T))`, `Props.Create<T>()`, `Props.create(T.class)`, `context.spawn(T.create())`. Only the first shape contains a `new` expression a regex could latch onto, and even there the regex sees a plain `creates` edge — the parent-child meaning has already evaporated. That's the gap the semantic-Docker plan fills: each toolkit gets a matcher that sees method names (`ActorOf` / `spawn`), reads the type parameter (or the `.class` literal, or the lambda's returned constructor), and emits a real `spawns_child` edge. Until those Docker images exist, the 13 e2e samples in TestSample/ are the holding pen — every future change can be measured against the same matrix.",
+      "ko": "`TestSample/` 에서 노출된 9건의 회귀는 독립된 버그가 아니라, 하나의 구조적 버그가 9개의 가면을 쓴 것이었다. Services/Analyzers/Languages/ 가 각 언어를 자기 ILanguageAnalyzer 로 분리하자 각 수정이 한 파일에 자리잡고 머물렀다: CSharpAnalyzer 가 Allman pending-class-on-brace 패턴을 흡수하면서 Java/Kotlin/PHP 를 깨뜨리지 않았다; RustAnalyzer 의 `impl Trait for Struct` + 그룹 import 분해가 Rust 안에 머물렀다; GoAnalyzer 가 struct-body embedded-field walker 를 추가하면서 어디로도 새지 않았다; CppAnalyzer 의 make_unique / make_shared 추가가 C# new 패턴을 건드리지 않았다. LanguageAnalyzerTests.cs 의 23개 신규 회귀 fixture 가 각 수정과 그 회귀 사이에 들어가 있다 — 한 언어 규칙을 건드리면 그 언어의 테스트만 실패할 수 있다. 동반된 교훈은 액터 fixture (csharp-akka / java-akka / kotlin-pekko) 에서 왔다. 동일한 'WorldActor 가 EnSpeakerActor 의 부모' 관계가 3개 툴킷에 걸쳐 5가지 이상의 방식으로 표현된다: `Props.Create(() => new T())`, `Props.Create(typeof(T))`, `Props.Create<T>()`, `Props.create(T.class)`, `context.spawn(T.create())`. 첫 번째 형태만 정규식이 잡을 수 있는 `new` 표현을 가지고, 그것도 정규식이 보는 것은 일반 `creates` 엣지 — 부모-자식 의미는 이미 증발했다. 그것이 시맨틱-도커 플랜이 채울 빈자리다: 각 툴킷이 메서드명 (`ActorOf` / `spawn`) 을 보고, 타입 파라미터 (또는 `.class` 리터럴, 또는 람다가 반환하는 생성자) 를 읽어 실제 `spawns_child` 엣지를 발행하는 매처를 갖는다. 그 도커 이미지들이 존재하기 전까지 TestSample/ 의 13개 e2e 샘플이 보관소다 — 모든 미래 변경이 같은 매트릭스에 대고 측정된다."
     }
   }
 }

@@ -1,71 +1,71 @@
 {
   "_description": "Recent Updates surface — bilingual EN/KO. Default audience: English. `headline`, `narrative`, `highlights[].label/text`, `prompts[].tag/text` use `{ en, ko }` shape. Scalars (updatedAt, tone) stay language-neutral.",
-  "updatedAt": "2026-05-17",
+  "updatedAt": "2026-05-18",
   "headline": {
-    "en": "v0.4 cycle — first end-to-end release pipeline, three install channels go live, Native AOT single-file binaries everywhere",
-    "ko": "v0.4 사이클 — 첫 end-to-end 릴리즈 파이프라인 가동, 3개 설치 채널 라이브, 모든 OS에 Native AOT 단일 바이너리"
+    "en": "v0.5.10 cycle — per-language analyzer split, multi-toolkit actor fixtures, harness v1.2.0 specialists join",
+    "ko": "v0.5.10 사이클 — 9개 언어 분석기 분리, 멀티 툴킷 액터 fixture, 하네스 v1.2.0 전문가 합류"
   },
   "narrative": {
-    "en": "CodeScan went from 'local dev script only' to a full distribution chain in one cycle. The release.yml matrix now builds win-x64 / linux-x64 / linux-arm64 / osx-arm64 single-file binaries with embedded SQLite native libs, generates a CycloneDX SBOM, computes SHA256 checksums, and publishes a GitHub Release on every `v*` tag. A CI smoke test runs `--version` + `projects` on every native-arch build, so missing native libs (the v0.4.0 → v0.4.1 regression) can never reach users again. On the install side, the Homebrew tap at `psmon/homebrew-codescan` is live for Apple Silicon Macs, the winget manifest is generated per release and ready to PR to `microsoft/winget-pkgs`, and the npm wrapper `codescan-cli` ships a postinstall that auto-detects OS+arch. Direct PowerShell + bash installers cover everything else. README split into English + Korean (README-KO.md) with a synchronized structure, and a new 'Why AOT?' bonus section ties the project to the 2026 Gemma 3 / Nemotron Nano on-device SLM wave and the sibling AgentZeroLite research project.",
-    "ko": "CodeScan 이 한 사이클 만에 '로컬 dev 스크립트뿐'에서 전체 배포 체인으로 도약했다. release.yml 매트릭스가 이제 win-x64 / linux-x64 / linux-arm64 / osx-arm64 single-file 바이너리를 SQLite 네이티브 lib 임베드 상태로 빌드하고, CycloneDX SBOM 을 생성하며, SHA256 checksum 을 계산하고, 모든 `v*` 태그마다 GitHub Release 를 게시한다. CI smoke test 가 모든 네이티브-arch 빌드마다 `--version` + `projects` 를 실행해서 네이티브 lib 누락 (v0.4.0 → v0.4.1 리그레션) 이 다시는 사용자에게 닿지 않는다. 설치 쪽은 `psmon/homebrew-codescan` 의 Homebrew tap 이 Apple Silicon Mac 에 라이브이고, winget 매니페스트는 릴리즈마다 생성되어 `microsoft/winget-pkgs` PR 준비 완료, npm 래퍼 `codescan-cli` 는 OS+arch 자동 감지 postinstall 을 포함한다. 직접 PowerShell + bash 인스톨러가 나머지를 커버. README 가 영문 + 한국어 (README-KO.md) 로 동기 구조 분리, 새 'Why AOT?' 보너스 섹션이 이 프로젝트를 2026 Gemma 3 / Nemotron Nano 온디바이스 SLM 흐름과 자매 프로젝트 AgentZeroLite 에 연결한다."
+    "en": "The regex engine that powered CodeScan from day one finally split: a single 9-language `ILanguageAnalyzer` family replaces the old shared brace-walker, each analyzer owning its own AOT-safe regex catalog under `Services/Analyzers/Languages/`. The refactor closed 9 measured regressions in one pass — Rust `impl Trait for Struct`, Go embedded struct, Kotlin primary constructor, C++ `make_unique`, JS/TS `super()` noise and more — verified by 23 new fixtures in `Tests/LanguageAnalyzerTests.cs`. Alongside the code work, 13 buildable e2e samples landed in `TestSample/`: 10 single-file OOP samples (csharp / java / kotlin / javascript / typescript / php / python / go / rust / cpp) plus 3 actor-model fixtures — `csharp-akka` (Akka.NET 1.5), `java-akka` (Akka Classic 2.7) and `kotlin-pekko` (Apache Pekko Typed 1.1). All three actor samples are Docker-verified and demonstrate exactly where regex hits its ceiling: parent-child actor relationships live in `ActorOf<T>` / `Props.create(T.class)` / `context.spawn(...)` calls that no token-level matcher can resolve. Harness v1.2.0 picks up that thread by adding three specialist agents — `language-analyzer-keeper`, `actor-toolkit-scout`, `semantic-bridge-architect` — and seeds the Roslyn / JDT / Pekko semantic-Docker plan that fills the gap.",
+    "ko": "CodeScan 의 출발부터 사용된 정규식 엔진이 드디어 9개 언어 `ILanguageAnalyzer` 패밀리로 분리되었다. 기존 공용 brace-walker 가 `Services/Analyzers/Languages/` 아래 9개 분석기로 갈라져 각자 AOT-safe 정규식 카탈로그를 소유한다. 이 리팩토링이 한 번에 9개의 측정된 회귀를 봉합했다 — Rust `impl Trait for Struct`, Go embedded struct, Kotlin primary constructor, C++ `make_unique`, JS/TS `super()` 노이즈 등 — `Tests/LanguageAnalyzerTests.cs` 의 23개 신규 fixture 로 검증된다. 코드 작업과 함께 13개 빌드 가능한 e2e 샘플이 `TestSample/` 에 들어갔다: 10개 단일 파일 OOP 샘플 (csharp / java / kotlin / javascript / typescript / php / python / go / rust / cpp) + 3개 액터 모델 fixture — `csharp-akka` (Akka.NET 1.5), `java-akka` (Akka Classic 2.7), `kotlin-pekko` (Apache Pekko Typed 1.1). 세 액터 샘플 모두 도커로 검증되며, 정규식이 한계에 부딪히는 지점을 정확히 보여준다: 부모-자식 액터 관계가 `ActorOf<T>` / `Props.create(T.class)` / `context.spawn(...)` 호출 안에 있어 토큰 기반 매칭은 닿을 수 없다. 하네스 v1.2.0 이 그 실을 이어 3명의 전문가를 추가한다 — `language-analyzer-keeper`, `actor-toolkit-scout`, `semantic-bridge-architect` — 그리고 Roslyn / JDT / Pekko 시맨틱-도커 플랜을 정원에 심는다."
   },
   "highlights": [
     {
-      "label": { "en": "Release pipeline",  "ko": "릴리즈 파이프라인" },
+      "label": { "en": "9-language analyzer split",  "ko": "9개 언어 분석기 분리" },
       "text":  {
-        "en": "release.yml builds 4 native binaries on tag push, generates SBOM, aggregates checksums, runs CI smoke test (--version + projects to exercise SQLite native lib)",
-        "ko": "release.yml 이 태그 푸시마다 4개 네이티브 바이너리 빌드, SBOM 생성, checksum 집계, CI smoke test 실행 (--version + projects 로 SQLite 네이티브 lib 검증)"
+        "en": "Services/Analyzers/Languages/ now hosts one ILanguageAnalyzer per language (C# / Java / Kotlin / JS-TS / PHP / Python / Go / Rust / C++). SourceAnalyzer and HybridSourceGraphAnalyzer become thin facades that delegate via LanguageAnalyzerRegistry.",
+        "ko": "Services/Analyzers/Languages/ 가 언어별 ILanguageAnalyzer 1개씩을 호스트한다 (C# / Java / Kotlin / JS-TS / PHP / Python / Go / Rust / C++). SourceAnalyzer 와 HybridSourceGraphAnalyzer 는 얇은 facade 가 되어 LanguageAnalyzerRegistry 를 통해 위임한다."
       },
       "tone": "blue"
     },
     {
-      "label": { "en": "Three install channels", "ko": "3개 설치 채널" },
+      "label": { "en": "13 buildable e2e fixtures", "ko": "13개 빌드 가능 e2e fixture" },
       "text":  {
-        "en": "winget (Windows) · Homebrew tap psmon/codescan (macOS arm64) · npm codescan-cli (Linux x64+arm64). Same GitHub Release feeds all three",
-        "ko": "winget (Windows) · Homebrew tap psmon/codescan (macOS arm64) · npm codescan-cli (Linux x64+arm64). 세 채널 모두 동일 GitHub Release 를 가져감"
+        "en": "TestSample/ ships 10 OOP samples + 3 actor-model samples (csharp-akka, java-akka, kotlin-pekko). Each carries a Dockerfile and a .gitignore; all three actor samples are docker-build verified.",
+        "ko": "TestSample/ 에 10개 OOP 샘플 + 3개 액터 모델 샘플 (csharp-akka, java-akka, kotlin-pekko). 각각 Dockerfile 과 .gitignore 포함 — 3개 액터 샘플 모두 도커 빌드 검증 완료."
       },
       "tone": "purple"
     },
     {
-      "label": { "en": "SQLite-bundled single-file", "ko": "SQLite 임베드 단일 파일" },
+      "label": { "en": "9 regex regressions fixed", "ko": "9건 정규식 회귀 봉합" },
       "text":  {
-        "en": "IncludeNativeLibrariesForSelfExtract=true so the lone codescan binary carries e_sqlite3 inside and extracts on launch — no companion DLL needed on user machines",
-        "ko": "IncludeNativeLibrariesForSelfExtract=true 로 단일 codescan 바이너리가 e_sqlite3 를 내부에 담고 실행 시 추출 — 사용자 머신에 companion DLL 불필요"
+        "en": "Rust impl-for-struct, Rust group import, Go embedded struct, Go composite-literal self-ref, Kotlin primary constructor, Kotlin Type(args) creates, C++ make_unique/make_shared, JS/TS super()/return/throw — all surfaced from TestSample matrix and locked behind 23 new LanguageAnalyzerTests cases.",
+        "ko": "Rust impl-for-struct, Rust 그룹 import, Go embedded struct, Go composite-literal self-ref, Kotlin primary constructor, Kotlin Type(args) creates, C++ make_unique/make_shared, JS/TS super()/return/throw — TestSample 매트릭스에서 모두 노출되었고 23개 신규 LanguageAnalyzerTests 케이스로 봉합."
       },
       "tone": "green"
     },
     {
-      "label": { "en": "Bilingual README", "ko": "이중 언어 README" },
+      "label": { "en": "Harness v1.2.0 — 3 new specialists", "ko": "하네스 v1.2.0 — 신규 전문가 3명" },
       "text":  {
-        "en": "README.md (EN) + README-KO.md (KO) with mirrored structure and a top-of-file language switcher. 'Why AOT?' bonus section explains the 2026 edge-SLM thesis and links to AgentZeroLite",
-        "ko": "README.md (EN) + README-KO.md (KO) 가 동일 구조 미러링 + 파일 상단 언어 스위처. 'Why AOT?' 보너스 섹션이 2026 엣지-SLM 흐름을 설명하고 AgentZeroLite 로 연결"
+        "en": "language-analyzer-keeper owns the 9-language regex catalog. actor-toolkit-scout tracks Akka.NET vs Akka Classic vs Pekko Typed patterns. semantic-bridge-architect designs the Roslyn / JDT / tsc Docker isolation plan that picks up where regex hits its ceiling.",
+        "ko": "language-analyzer-keeper 가 9개 언어 정규식 카탈로그를 소유. actor-toolkit-scout 가 Akka.NET vs Akka Classic vs Pekko Typed 패턴을 추적. semantic-bridge-architect 가 정규식이 한계에 닿는 지점부터 이어받을 Roslyn / JDT / tsc 도커 격리 플랜을 설계."
       },
       "tone": "blue"
     }
   ],
   "prompts": [
     {
-      "tag":  { "en": "Try winget",         "ko": "winget 시도" },
+      "tag":  { "en": "Try actor fixtures",      "ko": "액터 fixture 체험" },
       "tone": "blue",
       "text": {
-        "en": "On Windows: enable LocalManifestFiles once (admin PowerShell), then `winget install --manifest packaging\\winget\\manifests\\p\\psmon\\CodeScan\\0.4.2` — until the microsoft/winget-pkgs PR merges",
-        "ko": "Windows 에서: 관리자 PowerShell 로 LocalManifestFiles 한 번 켠 뒤 `winget install --manifest packaging\\winget\\manifests\\p\\psmon\\CodeScan\\0.4.2` — microsoft/winget-pkgs PR 머지 전까지"
+        "en": "Run the three actor samples end-to-end via docker — `docker run --rm hello-akka` (Akka.NET), `hello-akka-java` (Akka Classic), `hello-pekko-kotlin` (Pekko Typed). Same domain, three toolkit surfaces — exactly the kind of input the upcoming semantic-Docker images will analyse.",
+        "ko": "세 액터 샘플을 도커로 끝까지 실행 — `docker run --rm hello-akka` (Akka.NET), `hello-akka-java` (Akka Classic), `hello-pekko-kotlin` (Pekko Typed). 같은 도메인, 세 가지 툴킷 표면 — 곧 등장할 시맨틱-도커 이미지가 분석할 정확한 입력."
       }
     },
     {
-      "tag":  { "en": "Tap on macOS",      "ko": "macOS Tap" },
+      "tag":  { "en": "Run the new tests",       "ko": "새 테스트 실행" },
       "tone": "purple",
       "text": {
-        "en": "`brew tap psmon/codescan && brew install codescan` on Apple Silicon. First run: `xattr -d com.apple.quarantine $(brew --prefix)/bin/codescan` (v1 unsigned)",
-        "ko": "Apple Silicon 에서 `brew tap psmon/codescan && brew install codescan`. 첫 실행: `xattr -d com.apple.quarantine $(brew --prefix)/bin/codescan` (v1 unsigned)"
+        "en": "`dotnet test --filter \"FullyQualifiedName~LanguageAnalyzerTests\"` exercises the 23 new regression fixtures (Allman C#, Kotlin primary constructor, Go embedded struct, Rust impl-for-struct, C++ make_unique, JS super-as-method, registry-resolves-extension and more).",
+        "ko": "`dotnet test --filter \"FullyQualifiedName~LanguageAnalyzerTests\"` 가 23개 신규 회귀 fixture 를 실행 (Allman C#, Kotlin primary constructor, Go embedded struct, Rust impl-for-struct, C++ make_unique, JS super-as-method, registry-resolves-extension 등)."
       }
     },
     {
-      "tag":  { "en": "Linux one-liner",    "ko": "Linux 한 줄" },
+      "tag":  { "en": "Browse semantic plan",    "ko": "시맨틱 플랜 열람" },
       "tone": "green",
       "text": {
-        "en": "Direct installer covers Linux today: `curl -fsSL https://raw.githubusercontent.com/psmon/CodeScan/main/Script/install.sh | sh` (x64 + arm64 auto-detected, SHA256 verified)",
-        "ko": "직접 인스톨러로 Linux 즉시 사용 가능: `curl -fsSL https://raw.githubusercontent.com/psmon/CodeScan/main/Script/install.sh | sh` (x64 + arm64 자동 감지, SHA256 검증)"
+        "en": "Open `harness/knowledge/semantic-analyzer-docker.md` and `harness/knowledge/actor-model-cross-toolkit.md` to see the Phase 1-B plan that targets parent-child actor edges across all three toolkits — `spawns_child`, `receives_message`, `sends_message_to` candidates.",
+        "ko": "`harness/knowledge/semantic-analyzer-docker.md` 와 `harness/knowledge/actor-model-cross-toolkit.md` 를 열면 3개 툴킷의 부모-자식 액터 엣지를 노리는 Phase 1-B 플랜이 보인다 — `spawns_child`, `receives_message`, `sends_message_to` 후보."
       }
     }
   ]

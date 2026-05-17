@@ -6,7 +6,7 @@
       "label": "Scan & Index Pipeline",
       "description": "scan / list command — traverses a project tree, extracts class:method definitions, comments, and dependency edges, enriches with git blame, and persists to SQLite with FTS5 + graph tables",
       "mermaid": "flowchart LR\n  U[codescan scan path] --> DS[DirectoryScanner]\n  DS -->|file list| SA[SourceAnalyzer]\n  DS -->|file list| CE[CommentExtractor]\n  SA -->|methods| GB[GitBlameService]\n  GB -->|author, date| ST[SqliteStore]\n  CE -->|comments| ST\n  SA -->|deps| SGA[SourceGraphAnalyzer]\n  SGA -->|nodes + edges| ST\n  ST -->|FTS5 + graph tables| DB[(~/.codescan/db/codescan.db)]",
-      "sourceMermaid": "flowchart TB\n  subgraph Cmd[Commands/]\n    LC[ListCommand.cs]\n  end\n  subgraph Svc[Services/]\n    DS[DirectoryScanner.cs]\n    SA[SourceAnalyzer.cs]\n    CE[CommentExtractor.cs]\n    SGA[SourceGraphAnalyzer.cs]\n    GB[GitBlameService.cs]\n    ST[SqliteStore.cs]\n  end\n  LC --> DS\n  DS --> SA\n  DS --> CE\n  SA --> SGA\n  SA --> GB\n  CE --> ST\n  SGA --> ST\n  GB --> ST"
+      "sourceMermaid": "flowchart TB\n  subgraph Cmd[Commands/]\n    LC[ListCommand.cs]\n  end\n  subgraph Svc[Services/]\n    DS[DirectoryScanner.cs]\n    SA[SourceAnalyzer.cs<br/>facade since v1.2.0]\n    CE[CommentExtractor.cs]\n    SGA[SourceGraphAnalyzer.cs<br/>facade since v1.2.0]\n    GB[GitBlameService.cs]\n    ST[SqliteStore.cs]\n  end\n  subgraph LA[\"Services/Analyzers/ — per-language since v1.2.0\"]\n    REG[LanguageAnalyzerRegistry.cs]\n    HLP[AnalyzerHelpers.cs]\n    L9[\"9 ILanguageAnalyzer impls:<br/>CSharp · Java · Kotlin<br/>JsTs · Php · Python<br/>Go · Rust · Cpp\"]\n  end\n  LC --> DS\n  DS --> SA\n  DS --> CE\n  SA --> REG\n  REG --> L9\n  L9 -.uses.-> HLP\n  SA --> GB\n  SGA --> REG\n  CE --> ST\n  SGA --> ST\n  GB --> ST"
     },
     {
       "id": "search-hybrid",
@@ -41,7 +41,7 @@
       "label": "Release Pipeline",
       "description": "version.txt → annotated git tag → release.yml matrix builds 4 native binaries with embedded SQLite native libs → CycloneDX SBOM + SHA256 checksums → GitHub Release publish → smoke test (--version + projects) guards every native-arch build",
       "mermaid": "graph LR\n  V[version.txt] --> T[git tag v*]\n  T --> P[git push --tags]\n  P --> GA[release.yml<br/>matrix build]\n  GA --> SBOM[CycloneDX SBOM]\n  GA --> CK[SHA256 checksums.txt]\n  GA --> SMK[CI smoke test<br/>--version + projects]\n  SMK --> REL[GitHub Release]\n  SBOM --> REL\n  CK --> REL",
-      "sourceMermaid": "flowchart TB\n  subgraph Repo[/]\n    VT[version.txt]\n    CSP[CodeScan.csproj<br/>AutoBumpVersion target<br/>SkipAutoBumpVersion gate]\n  end\n  subgraph CI[.github/workflows]\n    REL[release.yml<br/>tags v*]\n  end\n  CSP -.bumps.-> VT\n  VT --> REL"
+      "sourceMermaid": "flowchart TB\n  subgraph Repo[Repo root]\n    VT[version.txt]\n    CSP[CodeScan.csproj<br/>AutoBumpVersion target<br/>SkipAutoBumpVersion gate]\n  end\n  subgraph CI[.github/workflows]\n    REL[release.yml<br/>tags v*]\n  end\n  CSP -.bumps.-> VT\n  VT --> REL"
     },
     {
       "id": "install-channels",
