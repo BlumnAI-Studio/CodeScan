@@ -516,6 +516,15 @@ CodeScan does not host an LLM itself. It is the **indexing and retrieval layer**
 - A Cypher-like graph-query surface that an autonomous build/deploy bot can use to reason about change impact.
 - A RAG-lite component for drone or robot SDK repos — analyze offline, then feed code context into the SLM.
 
+#### Companion project: AgentZeroLite
+
+The "agent" half of the picture is being built in parallel as a sibling research project — [**psmon/AgentZeroLite**](https://github.com/psmon/AgentZeroLite). AgentZeroLite focuses on **running and evaluating on-device SLMs** (the Gemma 3 / Nemotron Nano-class models discussed above) on real consumer-grade hardware, while CodeScan acts as the code-aware retrieval layer those agents call into. The two are designed to compose:
+
+- **AgentZeroLite** — hosts the on-device model, manages prompting, tool-use, and evaluation loops for edge inference scenarios.
+- **CodeScan** — answers "what's in this codebase?" with FTS5 keyword hits, the source graph, and Cypher-like queries — the kind of structured context an SLM needs to do useful code work without a frontier model.
+
+If you want to see how this plays out end-to-end (on-device SLM ↔ structured code retrieval), AgentZeroLite is the natural next stop.
+
 In short — **as small models start doing real work on the edge, the *tooling* around those models has to be small, instant, and runtime-free too**. A Native AOT single binary is the most direct answer to that requirement, and CodeScan is built along that line.
 
 > For the full build/distribution spec, see [`Docs/install-distribution-strategy.md`](Docs/install-distribution-strategy.md).
