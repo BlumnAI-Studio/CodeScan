@@ -57,7 +57,7 @@ CodeScan의 지식, 아키텍처, 간편 설치, 배포 운영 같은 기술 주
 | 코드 서명 (Windows) | v1 미적용, v1.x 후속 평가 |
 | Notarization (macOS) | v1 미적용, v1.x 후속 평가 |
 | Linux libc | glibc 우선 (Ubuntu 22.04 LTS 빌드 기준), musl 미지원 (v2 검토) |
-| 아키텍처 | x64 + arm64 (Linux/macOS), Windows는 x64만 (arm64 v2) |
+| 아키텍처 | Linux: x64 + arm64 / macOS: arm64만 / Windows: x64만 (Intel Mac과 Windows arm64는 v2 재평가) |
 | 사용자 데이터 위치 | `~/.codescan/` — 설치 도구와 분리 |
 | 텔레메트리 | 없음 (opt-in 포함) |
 | 자동 마이그레이션 | DB 스키마 변경 시 자동 백업 후 마이그레이션 |
@@ -88,11 +88,12 @@ GitHub Release에는 다음 asset을 제공한다.
 codescan-win-x64.zip
 codescan-linux-x64.tar.gz
 codescan-linux-arm64.tar.gz
-codescan-osx-x64.tar.gz
 codescan-osx-arm64.tar.gz
 checksums.txt
 sbom.cdx.json
 ```
+
+> v1에서 `codescan-osx-x64`(Intel Mac)는 제외되었다. GitHub Actions `macos-13` 러너 풀이 좁아 빌드가 큐에서 막히는 일이 잦았기 때문이다. Intel Mac은 v2에서 재평가한다. Intel Mac 사용자는 소스에서 직접 빌드(`Script/deploy-linux.sh` 응용)하거나 Rosetta를 통해 `osx-arm64` 빌드를 실행할 수 있다.
 
 각 압축 파일 내부 구조는 다음을 표준으로 한다.
 
@@ -310,7 +311,7 @@ brew install psmon/codescan/codescan
 
 - tap 저장소: `psmon/homebrew-codescan`
 - Formula는 GitHub Release의 macOS tarball을 다운로드한다.
-- Apple Silicon(arm64)과 Intel(x64)을 모두 처리한다.
+- v1은 Apple Silicon(arm64)만 처리한다. Intel Mac은 v2에서 재평가.
 
 ### Formula 핵심
 
@@ -327,8 +328,7 @@ class Codescan < Formula
       sha256 "<sha256>"
     end
     on_intel do
-      url "https://github.com/psmon/CodeScan/releases/download/v#{version}/codescan-osx-x64.tar.gz"
-      sha256 "<sha256>"
+      odie "CodeScan v1 does not ship an Intel Mac binary. Build from source or use Rosetta with the arm64 build."
     end
   end
 
@@ -349,7 +349,7 @@ end
 | tap 저장소 | `psmon/homebrew-codescan` |
 | Formula 위치 | `Formula/codescan.rb` |
 | notarization | v1 미적용, README에 `xattr -d` 안내 |
-| arch | arm64 + x64 모두 |
+| arch | arm64만 (Intel은 v2 재평가) |
 | quarantine | 사용자 안내 + 향후 notarization으로 해결 |
 | brew audit | tap에서는 강제 아님, core 진입 전 통과 목표 |
 

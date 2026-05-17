@@ -23,15 +23,14 @@ extract_sha() {
 }
 
 SHA_ARM64="$(extract_sha codescan-osx-arm64.tar.gz)"
-SHA_X64="$(  extract_sha codescan-osx-x64.tar.gz)"
 
-if [ -z "$SHA_ARM64" ] || [ -z "$SHA_X64" ]; then
-    echo "Missing SHA256 for one or more osx assets in $SUMS_FILE" >&2
+if [ -z "$SHA_ARM64" ]; then
+    echo "Missing SHA256 for codescan-osx-arm64.tar.gz in $SUMS_FILE" >&2
     exit 1
 fi
 
+# Intel Mac (osx-x64) is not shipped in v1; the formula uses odie() for Intel.
 sed \
     -e "s|VERSION_PLACEHOLDER|${VERSION}|g" \
     -e "s|SHA256_OSX_ARM64_PLACEHOLDER|${SHA_ARM64}|g" \
-    -e "s|SHA256_OSX_X64_PLACEHOLDER|${SHA_X64}|g" \
     "$FORMULA"

@@ -63,6 +63,15 @@ ASSET="codescan-${RID}.tar.gz"
 
 step "Detected platform: $RID"
 
+# 1a. v1 does not ship Intel Mac binaries.
+if [ "$RID" = "osx-x64" ]; then
+    err "Intel Mac (osx-x64) is not shipped in CodeScan v1."
+    err "Options:"
+    err "  - Build from source: https://github.com/$REPO"
+    err "  - Use Rosetta with the arm64 build:  arch -arm64 $0 [--version $VERSION]"
+    exit 1
+fi
+
 # 1b. libc warning for Linux
 if [ "$os" = "linux" ]; then
     if ! ldd --version 2>&1 | grep -qi 'glibc\|gnu libc'; then

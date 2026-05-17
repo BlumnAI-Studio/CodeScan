@@ -64,10 +64,8 @@ jobs:
             rid: linux-arm64
             archive: tar.gz
             exe: codescan
-          - os: macos-13
-            rid: osx-x64
-            archive: tar.gz
-            exe: codescan
+          # osx-x64 (Intel Mac) intentionally dropped in v1: GitHub Actions
+          # macos-13 runner pool is heavily constrained. v2 will re-evaluate.
           - os: macos-14
             rid: osx-arm64
             archive: tar.gz

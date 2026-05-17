@@ -24,8 +24,7 @@ class Codescan < Formula
       sha256 "SHA256_OSX_ARM64_PLACEHOLDER"
     end
     on_intel do
-      url "https://github.com/psmon/CodeScan/releases/download/v#{version}/codescan-osx-x64.tar.gz"
-      sha256 "SHA256_OSX_X64_PLACEHOLDER"
+      odie "CodeScan v1 does not ship an Intel Mac binary. Build from source or use Rosetta with the arm64 build."
     end
   end
 

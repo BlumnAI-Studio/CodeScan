@@ -11,7 +11,9 @@ Tap repository: `psmon/homebrew-codescan` (separate repo, manually created).
 
 ## v1 release flow (manual)
 
-1. Publish a GitHub Release (osx-arm64 + osx-x64 tarballs + checksums.txt).
+> v1 ships **only** the Apple Silicon (osx-arm64) binary. Intel Mac users get a clear `odie` message from the formula. Re-enabling Intel is a v2 item.
+
+1. Publish a GitHub Release (osx-arm64 tarball + checksums.txt).
 2. From the CodeScan repo:
    ```bash
    ./packaging/homebrew/update-formula.sh 0.3.94 ./dist/checksums.txt > /tmp/codescan.rb
