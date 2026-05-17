@@ -69,11 +69,11 @@ Scanning can be launched from the terminal interface with method/comment extract
 
 ### Easy Install — one line per OS
 
-| OS | Architecture | Command |
-|----|--------------|---------|
-| **Windows** | x64 | `winget install psmon.CodeScan` |
-| **macOS** | arm64 (Apple Silicon) | `brew install psmon/codescan/codescan` |
-| **Linux** | x64 / arm64 | `npm install -g codescan-cli` |
+| OS | Architecture | Primary command | Alternative |
+|----|--------------|-----------------|-------------|
+| **Windows** | x64 | `winget install psmon.CodeScan` | `npm install -g codescan-cli` (if Node is already installed) |
+| **macOS** | arm64 (Apple Silicon) | `brew install psmon/codescan/codescan` | — |
+| **Linux** | x64 / arm64 | `npm install -g codescan-cli` | — |
 
 After install, verify:
 
@@ -111,7 +111,7 @@ This is winget's built-in safety guard against arbitrary-yaml installs — once 
 
 - **winget (Windows)** — Microsoft's native Windows package manager. Portable install, no admin needed, PATH handled automatically.
 - **Homebrew (macOS)** — De-facto package manager for macOS developers. v1 ships **arm64 only** (Apple Silicon); Intel Mac users should build from source or use Rosetta with the arm64 build. Intel Mac shipping is a v2 candidate.
-- **npm (Linux)** — Picked over apt/dnf/snap because npm is universally available across Linux distros and the CodeScan release pipeline can serve **both x64 and arm64** from a single wrapper package. The npm package is a thin postinstall wrapper that downloads the right native binary from GitHub Releases. **Linux arm64 is a deliberate first-class target** — see [Why AOT? — Edge AI trend and the value of a single binary](#why-aot--edge-ai-trend-and-the-value-of-a-single-binary) at the bottom of this README for why arm64 SBC (Raspberry Pi / Jetson / Latte Panda) deployment is a key forward-looking scenario for this tool.
+- **npm (Linux + Windows alternative)** — Picked over apt/dnf/snap because npm is universally available across Linux distros and the CodeScan release pipeline can serve **all four binaries** (`linux-x64`, `linux-arm64`, `osx-arm64`, `win-x64`) from a single wrapper package. The npm package is a thin postinstall wrapper that downloads the right native binary from GitHub Releases. On Windows, `winget` stays the recommended path (no Node.js required), but `npm install -g codescan-cli` also works if you already have Node and want toolchain consistency. **Linux arm64 is a deliberate first-class target** — see [Why AOT? — Edge AI trend and the value of a single binary](#why-aot--edge-ai-trend-and-the-value-of-a-single-binary) at the bottom of this README for why arm64 SBC (Raspberry Pi / Jetson / Latte Panda) deployment is a key forward-looking scenario for this tool.
 
 ### Linux: x64 vs arm64
 

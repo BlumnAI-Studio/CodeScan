@@ -17,10 +17,14 @@ codescan --help
 | OS | Architectures |
 |----|---------------|
 | Linux (glibc) | x64, arm64 |
-| macOS         | x64, arm64 |
-| Windows       | (use `winget install psmon.CodeScan` instead) |
+| macOS         | arm64 (Apple Silicon) |
+| Windows       | x64 |
 
-musl/Alpine Linux is not supported in v1.
+All four shipped binaries (`win-x64`, `linux-x64`, `linux-arm64`, `osx-arm64`) are reachable from the npm wrapper — the postinstall picks the right one automatically.
+
+On Windows, `winget install psmon.CodeScan` is still the recommended path (no Node.js required), but if you already have Node installed and prefer a single `npm install -g` line for your toolchain, this package works too.
+
+musl/Alpine Linux and Intel Mac are v2 candidates.
 
 ## How it works
 
