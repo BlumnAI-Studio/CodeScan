@@ -14,12 +14,22 @@ public sealed class SearchCommand
     public int Execute(string query, SearchOptions options)
     {
         if (options.Graph)
+        {
+            if (options.GraphQuery || GraphQueryParser.LooksLikeQuery(query))
+                return new GraphCommand(_db).ExecuteQuery(query, new GraphOptions
+                {
+                    ProjectId = options.ProjectId,
+                    Depth = options.GraphDepth,
+                    Limit = options.Limit
+                });
+
             return new GraphCommand(_db).Execute(query, new GraphOptions
             {
                 ProjectId = options.ProjectId,
                 Depth = options.GraphDepth,
                 Limit = options.Limit
             });
+        }
 
         // 1) DB search (FTS5 + LIKE fallback)
         var dbResults = _db.Search(query, options.Type, options.Limit, options.ProjectId);
@@ -89,5 +99,6 @@ public sealed class SearchOptions
     public int Limit { get; set; } = 30;
     public long? ProjectId { get; set; }
     public bool Graph { get; set; }
+    public bool GraphQuery { get; set; }
     public int GraphDepth { get; set; } = 1;
 }

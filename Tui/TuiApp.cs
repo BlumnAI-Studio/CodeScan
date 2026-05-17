@@ -119,6 +119,7 @@ public class MainView : Toplevel
     private readonly TextField _txtSearch;
     private readonly Button _btnSearch;
     private readonly Button _btnGraphSearch;
+    private readonly Button _btnGraphQuery;
 
     // addinfo controls
     private readonly Label _lblAddInfo;
@@ -287,6 +288,14 @@ public class MainView : Toplevel
         };
         _btnGraphSearch.Accepting += OnExecuteGraphSearch;
 
+        _btnGraphQuery = new Button
+        {
+            Text = ">>> Query <<<",
+            X = 48, Y = 7,
+            Visible = false
+        };
+        _btnGraphQuery.Accepting += OnExecuteGraphQuery;
+
         // AddInfo UI (hidden by default)
         _lblAddInfo = new Label
         {
@@ -333,7 +342,7 @@ public class MainView : Toplevel
 
         Add(_titleLabel, _pathLabel, _hintLabel, _btnBack, _listView, _resultView,
             _chkTree, _chkDetail, _chkStats, _lblInclude, _txtInclude, _btnExecute,
-            _lblSearch, _txtSearch, _btnSearch, _btnGraphSearch,
+            _lblSearch, _txtSearch, _btnSearch, _btnGraphSearch, _btnGraphQuery,
             _lblAddInfo, _txtAddInfo, _btnAddInfo,
             _lblUpdatePath, _txtUpdatePath, _btnUpdatePath);
 
@@ -704,8 +713,8 @@ public class MainView : Toplevel
     {
         _mode = Mode.SearchInput;
         _titleLabel.Text = "Search Indexed Data";
-        _pathLabel.Text = "Keyword search or graph search";
-        _hintLabel.Text = "[Enter] Keyword Search  [Tab] Graph Search  [Q] Back  [H] Home";
+        _pathLabel.Text = "Keyword, graph search, or MATCH graph query";
+        _hintLabel.Text = "[Enter] Keyword Search  [Tab] Graph Search  [Query] MATCH syntax  [Q] Back  [H] Home";
 
         _listView.Visible = false;
         _resultView.Visible = false;
@@ -715,6 +724,7 @@ public class MainView : Toplevel
         _txtSearch.Visible = true;
         _btnSearch.Visible = true;
         _btnGraphSearch.Visible = true;
+        _btnGraphQuery.Visible = true;
 
         _txtSearch.Text = " ";
         _txtSearch.SetFocus();
@@ -729,6 +739,7 @@ public class MainView : Toplevel
         _txtSearch.Visible = false;
         _btnSearch.Visible = false;
         _btnGraphSearch.Visible = false;
+        _btnGraphQuery.Visible = false;
 
         try
         {
@@ -779,6 +790,7 @@ public class MainView : Toplevel
         _txtSearch.Visible = false;
         _btnSearch.Visible = false;
         _btnGraphSearch.Visible = false;
+        _btnGraphQuery.Visible = false;
 
         try
         {
@@ -809,6 +821,49 @@ public class MainView : Toplevel
         catch (Exception ex)
         {
             ShowSearchResults($"Graph search error: {ex.Message}", query);
+        }
+    }
+
+    private void OnExecuteGraphQuery(object? sender, CommandEventArgs e)
+    {
+        var query = _txtSearch.Text?.ToString()?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(query)) return;
+
+        _lblSearch.Visible = false;
+        _txtSearch.Visible = false;
+        _btnSearch.Visible = false;
+        _btnGraphSearch.Visible = false;
+        _btnGraphQuery.Visible = false;
+
+        try
+        {
+            var dbPath = AppPaths.DbPath;
+            if (!File.Exists(dbPath))
+            {
+                ShowSearchResults("No database found. Run 'scan --detail' first to index a project.", query);
+                return;
+            }
+
+            using var db = new SqliteStore(dbPath);
+            var graph = db.QueryGraph(query, null, depth: 0, limit: 80);
+            if (graph.Nodes.Count == 0)
+            {
+                ShowSearchResults($"No graph query results for: {query}", query);
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"=== Graph Query ({graph.Nodes.Count} nodes, {graph.Edges.Count} edges): {query} ===\n");
+            FormatGraph(sb, graph);
+            ShowSearchResults(sb.ToString(), query);
+        }
+        catch (GraphQueryParseException ex)
+        {
+            ShowSearchResults($"Graph query error: {ex.Message}", query);
+        }
+        catch (Exception ex)
+        {
+            ShowSearchResults($"Graph query error: {ex.Message}", query);
         }
     }
 
@@ -1404,6 +1459,7 @@ public class MainView : Toplevel
         _txtSearch.Visible = false;
         _btnSearch.Visible = false;
         _btnGraphSearch.Visible = false;
+        _btnGraphQuery.Visible = false;
         _lblAddInfo.Visible = false;
         _txtAddInfo.Visible = false;
         _btnAddInfo.Visible = false;

@@ -908,6 +908,185 @@ public sealed class SqliteStore : IResultStore, IDisposable
         return new GraphData { Nodes = nodes, Edges = edges };
     }
 
+    public GraphData QueryGraph(string query, long? projectId = null, int depth = 0, int limit = 80)
+    {
+        var spec = GraphQueryParser.Parse(query);
+        depth = Math.Clamp(depth, 0, 4);
+        limit = Math.Clamp(spec.Limit ?? limit, 1, 300);
+
+        var matchedIds = spec.HasEdge
+            ? FindGraphQueryEdgeNodeIds(spec, projectId, limit)
+            : FindGraphQueryNodeIds(spec, projectId, limit);
+
+        if (matchedIds.Count == 0)
+            return new GraphData();
+
+        var selectedIds = new HashSet<long>(matchedIds);
+        var frontier = new HashSet<long>(matchedIds);
+
+        for (int i = 0; i < depth && selectedIds.Count < 300; i++)
+        {
+            var neighbors = GetGraphNeighborIds(frontier, projectId, 300 - selectedIds.Count);
+            neighbors.ExceptWith(selectedIds);
+            if (neighbors.Count == 0) break;
+            selectedIds.UnionWith(neighbors);
+            frontier = neighbors;
+        }
+
+        var nodes = GetGraphNodes(selectedIds);
+        var edges = GetGraphEdges(selectedIds, projectId);
+
+        return new GraphData { Nodes = nodes, Edges = edges };
+    }
+
+    private List<long> FindGraphQueryNodeIds(GraphQuerySpec spec, long? projectId, int limit)
+    {
+        var ids = new List<long>();
+        using var cmd = _conn.CreateCommand();
+        var where = new List<string>();
+        AddLatestNodeScope(where, "n", projectId);
+
+        if (!string.IsNullOrWhiteSpace(spec.LeftKind))
+            AddEquals(where, cmd, "n.kind", "@leftKind", spec.LeftKind);
+
+        AddGraphQueryConditions(where, cmd, spec, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [spec.LeftAlias] = "n"
+        });
+
+        cmd.CommandText = $"""
+            SELECT n.id
+            FROM graph_nodes n
+            WHERE {string.Join(" AND ", where)}
+            ORDER BY n.scan_id DESC,
+                     CASE n.kind
+                        WHEN 'project' THEN 0
+                        WHEN 'directory' THEN 1
+                        WHEN 'file' THEN 2
+                        WHEN 'class' THEN 3
+                        WHEN 'method' THEN 4
+                        ELSE 5
+                     END,
+                     n.label
+            LIMIT @lim
+            """;
+        cmd.Parameters.AddWithValue("@lim", limit);
+        if (projectId.HasValue) cmd.Parameters.AddWithValue("@pid", projectId.Value);
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            ids.Add(reader.GetInt64(0));
+        return ids;
+    }
+
+    private List<long> FindGraphQueryEdgeNodeIds(GraphQuerySpec spec, long? projectId, int limit)
+    {
+        var ids = new HashSet<long>();
+        using var cmd = _conn.CreateCommand();
+        var where = new List<string>();
+        AddLatestEdgeScope(where, "e", projectId);
+
+        if (!string.IsNullOrWhiteSpace(spec.LeftKind))
+            AddEquals(where, cmd, "n.kind", "@leftKind", spec.LeftKind);
+        if (!string.IsNullOrWhiteSpace(spec.EdgeKind))
+            AddEquals(where, cmd, "e.kind", "@edgeKind", spec.EdgeKind);
+        if (!string.IsNullOrWhiteSpace(spec.RightKind))
+            AddEquals(where, cmd, "m.kind", "@rightKind", spec.RightKind);
+
+        AddGraphQueryConditions(where, cmd, spec, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [spec.LeftAlias] = "n",
+            [spec.EdgeAlias] = "e",
+            [spec.RightAlias] = "m"
+        });
+
+        cmd.CommandText = $"""
+            SELECT e.from_node_id, e.to_node_id
+            FROM graph_edges e
+            JOIN graph_nodes n ON n.id = e.from_node_id
+            JOIN graph_nodes m ON m.id = e.to_node_id
+            WHERE {string.Join(" AND ", where)}
+            ORDER BY e.scan_id DESC, e.kind, n.label, m.label
+            LIMIT @lim
+            """;
+        cmd.Parameters.AddWithValue("@lim", limit);
+        if (projectId.HasValue) cmd.Parameters.AddWithValue("@pid", projectId.Value);
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            ids.Add(reader.GetInt64(0));
+            ids.Add(reader.GetInt64(1));
+        }
+        return ids.ToList();
+    }
+
+    private static void AddLatestNodeScope(List<string> where, string alias, long? projectId)
+    {
+        where.Add(projectId.HasValue
+            ? $"{alias}.scan_id = (SELECT MAX(id) FROM scans WHERE project_id = @pid)"
+            : $"{alias}.scan_id IN (SELECT MAX(id) FROM scans GROUP BY project_id)");
+    }
+
+    private static void AddLatestEdgeScope(List<string> where, string alias, long? projectId)
+    {
+        where.Add(projectId.HasValue
+            ? $"{alias}.scan_id = (SELECT MAX(id) FROM scans WHERE project_id = @pid)"
+            : $"{alias}.scan_id IN (SELECT MAX(id) FROM scans GROUP BY project_id)");
+    }
+
+    private static void AddEquals(List<string> where, SqliteCommand cmd, string column, string parameter, string value)
+    {
+        where.Add($"{column} = {parameter} COLLATE NOCASE");
+        cmd.Parameters.AddWithValue(parameter, value);
+    }
+
+    private static void AddGraphQueryConditions(
+        List<string> where,
+        SqliteCommand cmd,
+        GraphQuerySpec spec,
+        Dictionary<string, string> aliasMap)
+    {
+        var i = 0;
+        foreach (var condition in spec.Conditions)
+        {
+            if (!aliasMap.TryGetValue(condition.Alias, out var sqlAlias))
+                throw new GraphQueryParseException($"Unknown alias in WHERE: {condition.Alias}.");
+
+            var column = condition.Field.ToLowerInvariant() switch
+            {
+                "kind" => $"{sqlAlias}.kind",
+                "label" => $"{sqlAlias}.label",
+                "path" => $"{sqlAlias}.path",
+                "detail" => $"{sqlAlias}.detail",
+                _ => throw new GraphQueryParseException($"Unsupported field: {condition.Field}.")
+            };
+
+            var parameter = $"@q{i++}";
+            switch (condition.Operator)
+            {
+                case GraphQueryOperator.Equals:
+                    where.Add($"{column} = {parameter} COLLATE NOCASE");
+                    cmd.Parameters.AddWithValue(parameter, condition.Value);
+                    break;
+                case GraphQueryOperator.Contains:
+                    where.Add($"{column} LIKE {parameter}");
+                    cmd.Parameters.AddWithValue(parameter, $"%{condition.Value}%");
+                    break;
+                case GraphQueryOperator.StartsWith:
+                    where.Add($"{column} LIKE {parameter}");
+                    cmd.Parameters.AddWithValue(parameter, $"{condition.Value}%");
+                    break;
+                case GraphQueryOperator.EndsWith:
+                    where.Add($"{column} LIKE {parameter}");
+                    cmd.Parameters.AddWithValue(parameter, $"%{condition.Value}");
+                    break;
+                default:
+                    throw new GraphQueryParseException($"Unsupported operator: {condition.Operator}.");
+            }
+        }
+    }
+
     private List<long> FindGraphNodeIds(string query, long? projectId, int limit)
     {
         var ids = new List<long>();

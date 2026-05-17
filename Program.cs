@@ -53,6 +53,7 @@ class Program
             "list" => RunList(commandArgs, globalArgs),
             "search" => RunSearch(commandArgs),
             "graph" => RunGraph(commandArgs),
+            "query" or "cypher" => RunGraphQuery(commandArgs),
             "gui" => RunGui(commandArgs),
             "projects" => RunProjects(commandArgs),
             "project" => RunProject(commandArgs),
@@ -201,6 +202,10 @@ class Program
                 case "--graph":
                     options.Graph = true;
                     break;
+                case "--query" or "--cypher":
+                    options.Graph = true;
+                    options.GraphQuery = true;
+                    break;
                 case "--depth" when i + 1 < args.Length:
                     if (int.TryParse(args[++i], out var depth))
                         options.GraphDepth = depth;
@@ -261,6 +266,49 @@ class Program
         using var db = OpenDb();
         var cmd = new GraphCommand(db);
         return cmd.Execute(query, options);
+    }
+
+    static int RunGraphQuery(string[] args)
+    {
+        string query = "";
+        var options = new GraphOptions();
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "-l" or "--limit" when i + 1 < args.Length:
+                    if (int.TryParse(args[++i], out var lim))
+                        options.Limit = lim;
+                    break;
+                case "-p" or "--project" when i + 1 < args.Length:
+                    if (long.TryParse(args[++i], out var pid))
+                        options.ProjectId = pid;
+                    break;
+                case "-d" or "--depth" when i + 1 < args.Length:
+                    if (int.TryParse(args[++i], out var depth))
+                        options.Depth = depth;
+                    break;
+                case "-h" or "--help":
+                    PrintGraphQueryHelp();
+                    return 0;
+                default:
+                    if (!args[i].StartsWith('-') && string.IsNullOrEmpty(query))
+                        query = args[i];
+                    break;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            Console.Error.WriteLine("Error: graph query is required.");
+            Console.Error.WriteLine("Usage: codescan query \"MATCH (n:class) WHERE n.label CONTAINS 'HttpClient' LIMIT 20\"");
+            return 1;
+        }
+
+        using var db = OpenDb();
+        var cmd = new GraphCommand(db);
+        return cmd.ExecuteQuery(query, options);
     }
 
     static int RunGui(string[] args)
@@ -444,6 +492,8 @@ class Program
             case "list": PrintListHelp(); break;
             case "search": PrintSearchHelp(); break;
             case "graph": PrintGraphHelp(); break;
+            case "query":
+            case "cypher": PrintGraphQueryHelp(); break;
             case "gui": PrintGuiHelp(); break;
             case "projects": PrintProjectsHelp(); break;
             case "project": PrintProjectHelp(); break;
@@ -511,6 +561,7 @@ class Program
           list <path>                  Scan directory with custom options
           search <query>               Search indexed methods, files, and docs
           graph [query]                Search/browse source knowledge graph
+          query <graph-query>          Run Cypher-like graph query subset
           gui start|stop               Start/stop local web GUI viewer
           projects                     List all indexed projects
           project <id> [--detail]      Show project info (summary / detail)
@@ -542,6 +593,7 @@ class Program
           codescan project-delete 1                Delete project from DB
           codescan search "HttpClient"             Search across all projects
           codescan search "HttpClient" --graph     Graph search
+          codescan query "MATCH (c:class)-[r:uses_type]->(t:type) LIMIT 20"
           codescan gui start --port 8085            Start web GUI viewer
         """);
     }
@@ -619,6 +671,7 @@ class Program
           -l, --limit <n>        Max results (default: 30)
           -p, --project <id>     Search within a specific project only
           --graph                Search graph nodes/edges instead of text index
+          --query, --cypher       Treat <query> as CodeScan graph query syntax
           --depth <n>            Graph neighbor depth with --graph (default: 1)
           -h, --help             Show help
 
@@ -628,6 +681,7 @@ class Program
           codescan search "SSE" --type doc
           codescan search "TODO" --project 1 --type comment
           codescan search "HttpClient" --graph --depth 2
+          codescan search "MATCH (f:file)-[r:imports]->(m:module) LIMIT 20" --query
         """);
     }
 
@@ -642,6 +696,26 @@ class Program
         whenever a project is scanned. Nodes include projects, directories,
         files, classes, methods, comments, docs, and git authors.
 
+        Query mode:
+          If [query] starts with MATCH, CodeScan treats it as a Cypher-like
+          graph query subset. This is not full Cypher; it maps only to the
+          CodeScan graph schema.
+
+          Supported pattern:
+            MATCH (n:kind)
+            MATCH (a:kind)-[r:edge_kind]->(b:kind)
+
+          Supported WHERE fields:
+            Node aliases: kind, label, path, detail
+            Edge aliases: kind, label
+            Operators: =, CONTAINS, STARTS WITH, ENDS WITH
+            Combine conditions with AND.
+
+          Supported clauses:
+            WHERE ... AND ...
+            RETURN ...   accepted for readability, ignored by renderer
+            LIMIT <n>    limits matched seed nodes/edges
+
         Options:
           -p, --project <id>     Search within a specific project only
           -d, --depth <n>        Expand neighbor depth (default: 1, max: 4)
@@ -652,6 +726,58 @@ class Program
           codescan graph
           codescan graph "HttpClient"
           codescan graph "SearchCommand" --project 1 --depth 2
+          codescan graph "MATCH (c:class)-[r:uses_type]->(t:type) WHERE c.label CONTAINS 'Command' LIMIT 25"
+          codescan graph "MATCH (f:file)-[r:imports]->(m:module) WHERE m.label CONTAINS 'Sqlite'"
+        """);
+    }
+
+    static void PrintGraphQueryHelp()
+    {
+        Console.WriteLine("""
+        codescan query - Run CodeScan's Cypher-like graph query subset
+
+        Usage: codescan query "<graph-query>" [options]
+               codescan cypher "<graph-query>" [options]
+
+        This command is designed for AI/tools that need structured graph
+        retrieval without direct SQL access. It supports only the graph data
+        CodeScan stores: project, directory, file, class, method, comment,
+        doc, author, type, and module nodes plus scanned relationship edges.
+
+        Supported MATCH patterns:
+          MATCH (n:kind)
+          MATCH (a:kind)-[r:edge_kind]->(b:kind)
+
+        Supported WHERE fields:
+          Node aliases: kind, label, path, detail
+          Edge aliases: kind, label
+
+        Supported operators:
+          =, CONTAINS, STARTS WITH, ENDS WITH
+
+        Supported clauses:
+          WHERE ... AND ...
+          RETURN ...    accepted for readability, ignored by CLI/TUI/GUI
+          LIMIT <n>     max matched seed nodes/edges
+
+        Common node kinds:
+          project, directory, file, class, method, comment, doc, author, type, module
+
+        Common edge kinds:
+          contains, defines, authored, has_comment, documents,
+          imports, inherits_or_implements, creates, uses_type
+
+        Options:
+          -p, --project <id>     Query within a specific project only
+          -d, --depth <n>        Expand neighbor depth after query match (default: 0, max: 4)
+          -l, --limit <n>        Max matched seed nodes/edges if query has no LIMIT
+          -h, --help             Show help
+
+        Examples:
+          codescan query "MATCH (c:class) WHERE c.label CONTAINS 'HttpClient' LIMIT 20"
+          codescan query "MATCH (c:class)-[r:uses_type]->(t:type) WHERE t.label = 'HttpClient'"
+          codescan query "MATCH (f:file)-[r:imports]->(m:module) WHERE m.label CONTAINS 'System.Net'"
+          codescan query "MATCH (a:author)-[r:authored]->(m:method) WHERE a.label CONTAINS 'kim'" --depth 1
         """);
     }
 

@@ -1,271 +1,394 @@
 ---
 name: codescan-analysis
 description: |
-  codescan CLI와 git CLI를 활용한 소스코드 분석 스킬.
-  등록된 프로젝트의 코드 구조, 메서드, 클래스, 변경 이력을 탐색·분석할 때 사용한다.
-  다음 상황에서 반드시 이 스킬을 사용할 것:
-  - "코드 분석", "소스 분석", "코드 검색", "코드 구조 파악"
-  - "메서드 검색", "클래스 구조", "프로젝트 구조 분석"
-  - "최근 변경사항", "코드 변경 이력", "git log 분석"
-  - "codescan으로 검색", "코드스캔", "코드 스캔"
-  - "프로젝트 스캔", "코드 인덱싱", "코드베이스 탐색"
-  - "소스 업데이트", "프로젝트 업데이트", "코드 최신화", "소스 동기화"
-  - 특정 프로젝트 소스코드에 대한 질문이나 분석 요청이면 적극적으로 트리거
-  - 다른 스킬에서 코드 레벨 분석이 필요할 때도 트리거
+  Use CodeScan CLI and git CLI for source-code analysis, project indexing,
+  keyword search, graph search, Cypher-like graph queries, and change history
+  analysis.
+
+  Trigger this skill when the user asks for:
+  - code analysis, source analysis, codebase exploration, or project structure
+  - method search, class search, dependency tracing, or relationship lookup
+  - CodeScan usage, codescan search, graph search, or Cypher-like graph queries
+  - recent changes, git history, git log analysis, or blame-based ownership
+  - project scanning, indexing, re-indexing, source update, or DB refresh
+  - any repository-level question where locating relevant files first will
+    reduce token usage before reading source files directly
 ---
 
 # CodeScan Analysis Skill
 
-`codescan` CLI와 `git` CLI로 소스코드를 탐색·분석하는 스킬이다.
-codescan은 다국어(C#, Java, Kotlin, JS, TS, PHP, Python) 소스코드를 클래스:메서드 수준까지 인덱싱하고, SQLite FTS5 기반 전문검색과 git blame 통합을 제공하는 네이티브 바이너리 도구다.
+Use this skill to analyze source code with the `codescan` CLI and `git` CLI.
 
-이 스킬의 PowerShell 스크립트들은 `scripts/` 디렉토리에 있으며, 반복적인 분석 작업을 자동화한다.
+CodeScan indexes projects into `~/.codescan/db/codescan.db`, extracts classes,
+methods, comments, docs, git blame metadata, and source graph relationships,
+then exposes the data through CLI, TUI, and local GUI interfaces.
+
+Platform status:
+
+- CodeScan is currently tested first on Windows PowerShell.
+- macOS/Linux-compatible CLI usage and skill command wrappers are being prepared.
+- On Linux-like environments, use CodeScan by building directly from source with the .NET SDK for now.
+
+Core idea:
+
+1. Use `codescan` to find relevant projects, files, methods, graph nodes, and relationships.
+2. Read only the files that matter.
+3. Use `git` for recent change history and exact diffs.
+
+PowerShell helper scripts live in this skill's `scripts/` directory, but direct
+`codescan` commands are usually clearer and easier to compose.
 
 ---
 
-## 1. codescan CLI 명령어 레퍼런스
+## 1. CodeScan CLI Reference
 
-### 프로젝트 관리
+### Project Management
 
-| 명령어 | 설명 | 예시 |
-|--------|------|------|
-| `codescan projects` | 등록된 전체 프로젝트 목록 조회 | `codescan projects` |
-| `codescan project <id>` | 프로젝트 요약 (파일수, 메서드수, 확장자, 저자 등) | `codescan project 1` |
-| `codescan project <id> --detail` | 프로젝트 상세 (전체 파일, 메서드, git blame, 문서) | `codescan project 1 --detail` |
-| `codescan project-addinfo <id> <desc>` | 프로젝트에 AI 친화적 설명 추가 | `codescan project-addinfo 1 "Spring Boot API"` |
-| `codescan project-update <id> [opts]` | 프로젝트 경로/설명/소스 업데이트 | `codescan project-update 1 --path D:\new` |
-| `codescan project-delete <id> [-f]` | 프로젝트 DB에서 삭제 (소스 파일은 유지) | `codescan project-delete 1 -f` |
+| Command | Purpose | Example |
+|---------|---------|---------|
+| `codescan projects` | List indexed projects | `codescan projects` |
+| `codescan project <id>` | Show project summary | `codescan project 1` |
+| `codescan project <id> --detail` | Show files, methods, docs, authors | `codescan project 1 --detail` |
+| `codescan project-addinfo <id> <text>` | Add AI-friendly project description | `codescan project-addinfo 1 "Spring Boot API"` |
+| `codescan project-update <id> [opts]` | Update path, description, or source index | `codescan project-update 1 --source` |
+| `codescan project-delete <id> [-f]` | Remove project from CodeScan DB only | `codescan project-delete 1 -f` |
 
-**project-update 옵션:**
-- `--path <path>` — 프로젝트 루트 경로 변경
-- `--addinfo <text>` — 프로젝트 설명 변경
-- `--source` — 소스 업데이트 (git pull + 전체 재스캔). git이 없거나 pull 실패 시 경고 출력 후 현재 소스로 스캔 진행
+`project-update` options:
+
+- `--path <path>`: update the stored project root path.
+- `--addinfo <text>`: update the project description.
+- `--source`: run `git pull` if possible, then perform a full rescan and DB re-index.
 
 ```powershell
-# 소스 업데이트 (git pull → full scan → DB 재인덱싱)
 codescan project-update 1 --source
-
-# 소스 업데이트 + 설명 변경 동시에
-codescan project-update 1 --source --addinfo "Updated description"
+codescan project-update 1 --source --addinfo "Payment gateway service"
 ```
 
-### 스캔 & 인덱싱
+### Scan And Index
 
-| 명령어 | 설명 | 예시 |
-|--------|------|------|
-| `codescan scan [path]` | 프로젝트 스캔 및 DB 등록 (`list --detail --tree --stats` 단축) | `codescan scan D:\myproject` |
-| `codescan list <path>` | 커스텀 옵션으로 디렉토리 스캔 및 DB 등록 | `codescan list D:\myproject` |
-| `codescan list <path> --detail --tree --stats` | 전체 분석 (메서드 추출 + git blame + 트리 + 통계) | `codescan list ./src --detail --tree --stats` |
+| Command | Purpose | Example |
+|---------|---------|---------|
+| `codescan scan [path]` | Register and analyze a project using smart defaults | `codescan scan D:\repo` |
+| `codescan list <path>` | Scan with custom output/filtering options | `codescan list D:\repo --detail --tree` |
 
-**list 옵션:**
-- `-i, --include <exts>` — 포함할 확장자 (쉼표 구분, 예: `.cs,.java`)
-- `-e, --exclude <dirs>` — 제외할 디렉토리 (쉼표 구분, 예: `bin,obj`)
-- `-d, --depth <n>` — 최대 탐색 깊이
-- `--tree` — 트리 형식 출력
-- `-s, --stats` — 파일/크기 통계 포함
-- `--detail` — 클래스:메서드 분석 + git blame 포함
+Useful `list` options:
 
-### 검색
+- `-i, --include <exts>`: include extensions, comma separated.
+- `-e, --exclude <dirs>`: exclude directory names, comma separated.
+- `-d, --depth <n>`: maximum traversal depth.
+- `--tree`: tree output.
+- `-s, --stats`: include file and size statistics.
+- `--detail`: class/method extraction, comment extraction, git blame, and graph indexing.
 
-| 명령어 | 설명 | 예시 |
-|--------|------|------|
-| `codescan search <query>` | 전체 프로젝트 대상 하이브리드 검색 | `codescan search "WebSocket"` |
-| `codescan search <query> -p <id>` | 특정 프로젝트 내 검색 | `codescan search "Order" -p 1` |
-| `codescan search <query> -t <type>` | 타입별 필터 검색 | `codescan search "TODO" -t comment` |
+Prefer `codescan scan <path>` for initial registration unless the user asks for
+custom traversal filters.
 
-**검색 타입(-t):** `method`, `file`, `doc`, `comment`, `commit`
-**결과 제한(-l):** 기본 30건, `-l 50` 등으로 조절
+### Keyword Search
 
-### TUI (사용자 직접 사용)
+| Command | Purpose | Example |
+|---------|---------|---------|
+| `codescan search <query>` | Hybrid DB full-text + git log search | `codescan search "HttpClient"` |
+| `codescan search <query> -p <id>` | Search within one project | `codescan search "Order" -p 1` |
+| `codescan search <query> -t <type>` | Filter by indexed type | `codescan search "TODO" -t comment` |
 
-`codescan tui`는 인터랙티브 터미널 UI로, 사용자가 직접 실행하여 프로젝트를 브라우징·스캔·검색할 수 있다.
-이 스킬에서는 TUI를 사용하지 않는다. 사용자에게 TUI 사용을 안내할 때는 다음과 같이 한다:
+Search types:
 
-> "TUI 모드에서 직접 탐색하시려면 터미널에서 `codescan tui`를 실행하세요. 프로젝트 브라우징, 스캔, 검색을 GUI로 할 수 있습니다."
+`method`, `file`, `doc`, `comment`, `commit`
 
-### 글로벌 옵션
+Result limit:
 
-| 옵션 | 설명 |
-|------|------|
-| `--verbose` | 상세 출력 모드 |
-| `--devmode` | `~/.codescan/logs/`에 로그 파일 저장 |
-| `-h, --help` | 도움말 |
-| `-v, --version` | 버전 확인 |
+`-l <n>`, default 30.
+
+Examples:
+
+```powershell
+codescan search "HttpClient"
+codescan search "OrderService" -p 1 -t method
+codescan search "TODO" -p 1 -t comment -l 50
+codescan search "authentication" -t doc
+```
+
+### Graph Search
+
+Graph search returns graph nodes and visible relationships from the source
+knowledge graph. Use it when the question is about structure, relationships,
+dependencies, ownership, or neighboring code concepts.
+
+```powershell
+codescan graph "HttpClient"
+codescan graph "SearchCommand" --project 1 --depth 2
+codescan search "HttpClient" --graph --depth 2
+```
+
+Options:
+
+- `-p, --project <id>`: restrict to one project.
+- `-d, --depth <n>`: expand neighbor hops, default 1, max 4.
+- `-l, --limit <n>`: max matched seed nodes.
+
+### Cypher-Like Graph Query
+
+Use `codescan query` when you need a structured graph retrieval pattern.
+`codescan cypher` is an alias. `codescan graph` also auto-detects queries that
+start with `MATCH`.
+
+This is not full Cypher. It is a safe CodeScan subset mapped to the local
+SQLite graph tables.
+
+Supported patterns:
+
+```cypher
+MATCH (n:kind)
+MATCH (a:kind)-[r:edge_kind]->(b:kind)
+```
+
+Supported fields:
+
+| Alias Type | Fields |
+|------------|--------|
+| Node alias | `kind`, `label`, `path`, `detail` |
+| Edge alias | `kind`, `label` |
+
+Supported operators:
+
+`=`, `CONTAINS`, `STARTS WITH`, `ENDS WITH`
+
+Supported clauses:
+
+- `WHERE ... AND ...`
+- `RETURN ...` is accepted for readability, but the renderer ignores it.
+- `LIMIT <n>` limits matched seed nodes or matched edges.
+
+Common node kinds:
+
+`project`, `directory`, `file`, `class`, `method`, `comment`, `doc`, `author`, `type`, `module`
+
+Common edge kinds:
+
+`contains`, `defines`, `authored`, `has_comment`, `documents`, `imports`,
+`inherits_or_implements`, `creates`, `uses_type`
+
+Examples:
+
+```powershell
+# Find class nodes
+codescan query "MATCH (c:class) WHERE c.label CONTAINS 'Service' LIMIT 20"
+
+# Find classes that use a specific type
+codescan query "MATCH (c:class)-[r:uses_type]->(t:type) WHERE t.label = 'HttpClient'"
+
+# Find file imports
+codescan query "MATCH (f:file)-[r:imports]->(m:module) WHERE m.label CONTAINS 'System.Net'"
+
+# Find authored methods and expand one neighbor hop
+codescan query "MATCH (a:author)-[r:authored]->(m:method) WHERE a.label CONTAINS 'kim'" --depth 1
+
+# Search command can force query mode
+codescan search "MATCH (f:file)-[r:imports]->(m:module) LIMIT 20" --query
+```
+
+When to use graph query instead of keyword search:
+
+- Use keyword search for "where is this word or method name?"
+- Use graph search for "show related nodes around this concept."
+- Use graph query for "find relationships of a specific shape."
+
+### TUI And GUI
+
+TUI:
+
+```powershell
+codescan tui
+```
+
+The TUI is intended for interactive human exploration. This skill should usually
+prefer non-interactive CLI commands. Mention TUI only when the user wants to
+browse manually.
+
+GUI:
+
+```powershell
+codescan gui start --port 8085
+codescan gui stop --port 8085
+```
+
+The GUI provides keyword search, graph search, graph query, 2D graph view, and
+camera-controlled 3D graph view. Use it when the user wants visual graph
+inspection.
 
 ---
 
-## 2. 분석 워크플로우
+## 2. Analysis Workflows
 
-### 2.1 프로젝트 등록 및 현황 파악
+### 2.1 Start With Indexed Project Discovery
 
-분석 전에 먼저 등록된 프로젝트를 확인한다. 미등록 프로젝트는 `scan`으로 등록한다.
+Before analyzing, check whether the project is already indexed.
 
 ```powershell
-# 등록된 프로젝트 목록 확인
 codescan projects
-
-# 새 프로젝트 스캔 및 등록 (scan = list --detail --tree --stats)
-codescan scan D:\myproject
-
-# 프로젝트 요약 조회
 codescan project <id>
-
-# 프로젝트 설명 추가
-codescan project-addinfo <id> "프로젝트 설명"
+codescan project <id> --detail
 ```
 
-또는 `scripts/scan-project.ps1` 스크립트로 자동화할 수 있다.
-
-### 2.2 프로젝트 소스 업데이트
-
-이미 등록된 프로젝트의 소스를 최신화하고 DB를 재인덱싱한다.
-수동으로 git pull + scan을 할 필요 없이 `--source` 한 번으로 처리된다.
+If the project is not registered:
 
 ```powershell
-# 프로젝트 소스 업데이트 (git pull → full scan → DB 재인덱싱)
+codescan scan <project-path>
+codescan project-addinfo <id> "Short project description"
+```
+
+### 2.2 Refresh Source And Index
+
+When the user asks to update source, refresh, rescan, or use latest code:
+
+```powershell
 codescan project-update <id> --source
+codescan project <id>
 ```
 
-또는 `scripts/update-source.ps1` 스크립트로 자동화할 수 있다.
+Behavior:
 
-**동작 순서:**
-1. 프로젝트 경로에서 git 저장소 확인
-2. `git pull`로 최신 소스 가져오기 (실패 시 경고 후 계속 진행)
-3. 전체 스캔: 디렉토리 순회 + 메서드/코멘트 분석 + git blame
-4. DB에 새 스캔 레코드 저장 (기존 데이터는 유지, 누적 방식)
+1. Detect git repository from the stored project path.
+2. Try `git pull`.
+3. Continue even if pull fails, with a warning.
+4. Full scan, method/comment extraction, git blame, graph indexing.
+5. Store a new scan record.
 
-**주의:** 현재 스캔 데이터는 누적(append) 방식이므로 반복 실행 시 이력이 쌓인다.
-조회 시 최신 스캔만 표시되지만, 검색은 전체 스캔 데이터를 대상으로 한다.
+### 2.3 Locate Code Before Reading Files
 
-### 2.3 코드 탐색 (어디에 뭐가 있는지 찾기)
-
-**순서: codescan으로 위치 파악 → 실제 파일 읽기**
-
-codescan은 코드 네비게이션 도구다. 전체 디렉토리를 풀스캔하기 전에 codescan으로 위치를 먼저 파악하면 토큰을 절약할 수 있다.
+Use CodeScan first to avoid reading the entire repository.
 
 ```powershell
-# 1단계: 메서드/파일 검색으로 위치 파악
-codescan search "OrderService" -p 1 -t method
-codescan search "Controller" -p 1 -t file
-
-# 2단계: 특정 경로 상세 스캔
-codescan list D:\myproject\src --include ".java" --tree --detail
+codescan search "OrderService" -p <id> -t method
+codescan search "Controller" -p <id> -t file
+codescan graph "OrderService" -p <id> --depth 1
 ```
 
-codescan 결과에서 경로를 확인한 뒤, Read 도구로 실제 파일을 읽어 코드를 분석한다.
+Then read the relevant files directly.
 
-또는 `scripts/search-code.ps1` 스크립트로 여러 타입을 한번에 검색할 수 있다.
+### 2.4 Trace Dependencies Or Relationships
 
-### 2.4 변경 이력 분석 (최근에 뭐가 바뀌었는지)
+For dependency questions, start with graph query:
 
 ```powershell
-# 최신 소스 가져오기
-cd D:\myproject; git pull
+codescan query "MATCH (c:class)-[r:uses_type]->(t:type) WHERE c.label CONTAINS 'Order'" -p <id>
+codescan query "MATCH (f:file)-[r:imports]->(m:module) WHERE m.label CONTAINS 'Http'" -p <id>
+codescan query "MATCH (c:class)-[r:creates]->(t:type) WHERE t.label CONTAINS 'Client'" -p <id>
+```
 
-# 최근 커밋 이력
+For ownership:
+
+```powershell
+codescan query "MATCH (a:author)-[r:authored]->(m:method) WHERE m.label CONTAINS 'Order'" -p <id>
+```
+
+### 2.5 Analyze Recent Changes
+
+Use git directly for exact history and diffs.
+
+```powershell
+git status
 git log --oneline -20
-
-# 특정 기간 변경사항
-git log --oneline --since="2026-03-01" --until="2026-04-01"
-
-# 특정 파일/디렉토리 변경 이력
-git log --oneline -10 -- src/main/java/com/example/order/
-
-# 변경된 파일 목록 및 diff
 git diff --name-only HEAD~5
 git show <commit-hash> --stat
+git show <commit-hash> -- <path>
 ```
 
-또는 `scripts/analyze-changes.ps1` 스크립트로 변경 이력 분석을 자동화할 수 있다.
+Use CodeScan to locate impacted files or methods after identifying changed
+areas.
 
-### 2.5 크로스 프로젝트 검색
+### 2.6 Cross-Project Search
+
+When the user does not know which project contains a concept:
 
 ```powershell
-# 전체 프로젝트 대상 검색 (프로젝트 지정 안 함)
 codescan search "WebSocket"
 codescan search "authentication" -t method
+codescan graph "HttpClient" --depth 1
 ```
 
-또는 `scripts/cross-project-search.ps1`로 프로젝트별 분류된 검색 결과를 얻을 수 있다.
+Then narrow with `-p <id>`.
 
 ---
 
-## 3. PowerShell 스크립트
+## 3. Helper Scripts
 
-`scripts/` 디렉토리에 반복 작업을 자동화하는 스크립트가 준비되어 있다.
-Bash에서 실행할 때는 `powershell -ExecutionPolicy Bypass -File <script>` 형태로 호출한다.
+Scripts are optional wrappers for repeated tasks.
 
-| 스크립트 | 용도 | 주요 파라미터 |
-|----------|------|---------------|
-| `project-overview.ps1` | 프로젝트 요약 + 최근 git 활동 | `-ProjectId <id>` |
-| `search-code.ps1` | 다중 타입 코드 검색 | `-Query <text> [-ProjectId <id>] [-Types <list>]` |
-| `analyze-changes.ps1` | 변경 이력 분석 | `-ProjectPath <path> [-Days <n>] [-Count <n>]` |
-| `cross-project-search.ps1` | 전체 프로젝트 통합 검색 | `-Query <text> [-Type <type>]` |
-| `scan-project.ps1` | 프로젝트 스캔/등록 자동화 | `-Path <path> [-Include <exts>] [-Exclude <dirs>]` |
-| `update-source.ps1` | 프로젝트 소스 업데이트 (git pull + 재스캔) | `-ProjectId <id>` |
+| Script | Purpose | Main Parameters |
+|--------|---------|-----------------|
+| `project-overview.ps1` | Project summary and recent git activity | `-ProjectId <id>` |
+| `search-code.ps1` | Multi-type code search | `-Query <text> [-ProjectId <id>] [-Types <list>]` |
+| `analyze-changes.ps1` | Git change history analysis | `-ProjectPath <path> [-Days <n>] [-Count <n>]` |
+| `cross-project-search.ps1` | Search across indexed projects | `-Query <text> [-Type <type>]` |
+| `scan-project.ps1` | Register and scan a project | `-Path <path> [-Include <exts>] [-Exclude <dirs>]` |
+| `update-source.ps1` | Source update and rescan | `-ProjectId <id>` |
+
+Run from PowerShell:
+
+```powershell
+.\.claude\skills\codescan-analysis\scripts\search-code.ps1 -Query "HttpClient" -ProjectId 1
+```
 
 ---
 
-## 4. 보안 가드레일
+## 4. Safety Guardrails
 
-이 스킬은 **읽기 전용(read-only)** 분석 도구다.
+This skill is primarily for analysis and indexing.
 
-### 허용
-- `git pull` (최신 소스 가져오기)
-- `git log`, `git diff`, `git show`, `git blame` (이력 조회)
-- `git branch -a`, `git status` (상태 확인)
-- `codescan` CLI 명령 (list, search, project, projects, project-addinfo, project-update)
-- Read 도구로 소스 파일 읽기
+Allowed:
 
-### 금지
-- `git commit`, `git push`, `git merge`, `git rebase` 등 변경 반영 명령
-- `git checkout`으로 브랜치 전환 (분석 대상 코드가 바뀔 수 있음)
-- 분석 대상 소스 파일 수정 (Edit, Write 도구 사용 금지)
+- `codescan` commands for scan, search, graph, query, project, projects, GUI/TUI guidance.
+- `git status`, `git log`, `git diff`, `git show`, `git blame`.
+- `git pull` only as part of source refresh when requested.
+- Reading source files after CodeScan identifies relevant paths.
 
-사용자가 커밋이나 푸시를 요청하면:
-> "이 스킬은 읽기 전용 분석 도구입니다. 소스코드 변경/반영은 해당 프로젝트에서 직접 수행해주세요."
+Avoid unless the user explicitly asks:
+
+- `git commit`, `git push`, `git merge`, `git rebase`.
+- branch switching with `git checkout` or `git switch`.
+- editing source files.
+- deleting CodeScan projects unless the user asks for DB cleanup.
+
+If the user asks for commit or push, leave this analysis skill and follow the
+normal repository workflow instead of treating it as read-only analysis.
 
 ---
 
-## 5. 사용 예시
+## 5. Common Task Recipes
 
-### API 코드 분석
-```
-사용자: "백엔드에서 주문 관련 API 코드 찾아줘"
-→ 1. codescan projects (프로젝트 목록 확인)
-→ 2. codescan search "주문" -p <id> -t method
-→ 3. codescan search "Order" -p <id> -t file
-→ 4. 검색 결과에서 경로 확인 후 Read로 실제 코드 읽기
-```
+### Find API Code
 
-### 최근 변경사항 분석
-```
-사용자: "이 프로젝트 최근 변경사항 분석해줘"
-→ 1. cd <project-path> && git pull
-→ 2. git log --oneline -20
-→ 3. git diff --stat HEAD~5
-→ 4. 변경된 주요 파일을 Read로 읽어 변경 내용 요약
-```
+User asks: "Find the order API code."
 
-### 프로젝트 구조 파악
-```
-사용자: "프로젝트 구조 알려줘"
-→ 1. codescan project <id>
-→ 2. codescan list <project-path>/src --tree --depth 3
-```
+1. `codescan projects`
+2. `codescan search "Order" -p <id> -t method`
+3. `codescan search "Controller" -p <id> -t file`
+4. Read the returned files.
 
-### 프로젝트 소스 업데이트
-```
-사용자: "프로젝트 소스 최신화해줘" / "코드 업데이트하고 다시 스캔해줘"
-→ 1. codescan project-update <id> --source
-   (git pull + full scan + DB 재인덱싱이 자동으로 수행)
-→ 2. codescan project <id> (업데이트 결과 확인)
-```
+### Understand A Class Dependency
 
-### 새 프로젝트 등록
-```
-사용자: "이 코드베이스를 codescan에 등록해줘"
-→ 1. codescan scan <path>
-→ 2. codescan project-addinfo <id> "프로젝트 설명"
-→ 3. codescan project <id> (등록 결과 확인)
-```
+User asks: "What does OrderService depend on?"
+
+1. `codescan query "MATCH (c:class)-[r:uses_type]->(t:type) WHERE c.label = 'OrderService'" -p <id>`
+2. `codescan query "MATCH (c:class)-[r:creates]->(t:type) WHERE c.label = 'OrderService'" -p <id>`
+3. Read the files for the returned class/type nodes if deeper analysis is needed.
+
+### Find Who Last Touched A Method
+
+1. `codescan search "MethodName" -p <id> -t method`
+2. `codescan query "MATCH (a:author)-[r:authored]->(m:method) WHERE m.label CONTAINS 'MethodName'" -p <id>`
+3. Use `git blame` or `git log -- <path>` for exact history.
+
+### Refresh And Re-Analyze
+
+1. `codescan project-update <id> --source`
+2. `codescan project <id>`
+3. Repeat keyword or graph query search.
+
+### Visualize Graph
+
+1. `codescan gui start --port 8085`
+2. Open `http://127.0.0.1:8085/`
+3. Use Keyword, Graph Search, or Query.
+4. Switch between 2D and 3D graph views.

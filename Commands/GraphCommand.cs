@@ -13,6 +13,9 @@ public sealed class GraphCommand
 
     public int Execute(string query, GraphOptions options)
     {
+        if (GraphQueryParser.LooksLikeQuery(query))
+            return ExecuteQuery(query, options);
+
         var graph = _db.SearchGraph(query, options.ProjectId, options.Depth, options.Limit);
         if (graph.Nodes.Count == 0)
         {
@@ -24,6 +27,36 @@ public sealed class GraphCommand
 
         var scope = options.ProjectId.HasValue ? $" (project #{options.ProjectId})" : "";
         var title = string.IsNullOrWhiteSpace(query) ? "Graph Overview" : $"Graph Search: {query}";
+        PrintGraph(graph, title, scope);
+        return 0;
+    }
+
+    public int ExecuteQuery(string query, GraphOptions options)
+    {
+        GraphData graph;
+        try
+        {
+            graph = _db.QueryGraph(query, options.ProjectId, options.Depth, options.Limit);
+        }
+        catch (GraphQueryParseException ex)
+        {
+            Console.Error.WriteLine($"Graph query error: {ex.Message}");
+            return 1;
+        }
+
+        if (graph.Nodes.Count == 0)
+        {
+            Console.WriteLine($"No graph query results for: {query}");
+            return 0;
+        }
+
+        var scope = options.ProjectId.HasValue ? $" (project #{options.ProjectId})" : "";
+        PrintGraph(graph, $"Graph Query: {query}", scope);
+        return 0;
+    }
+
+    private static void PrintGraph(GraphData graph, string title, string scope)
+    {
         Console.WriteLine($"=== {title}{scope} ===");
         Console.WriteLine($"Nodes: {graph.Nodes.Count}, Edges: {graph.Edges.Count}\n");
 
@@ -48,8 +81,6 @@ public sealed class GraphCommand
                 Console.WriteLine($"  {from ?? e.From.ToString()} -[{e.Kind}]-> {to ?? e.To.ToString()}");
             }
         }
-
-        return 0;
     }
 
     private static string Trim(string value, int max)

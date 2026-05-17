@@ -15,9 +15,10 @@ Built as a single native AOT binary with .NET 10.0.
 - **Full-text search** — FTS5 with trigram tokenizer for substring and CJK language support
 - **Hybrid search** — Combines indexed DB search with live `git log --grep` results
 - **Graph search** — Neo4j-style source knowledge graph stored in embedded SQLite
+- **Cypher-like graph query** — Safe `MATCH ... WHERE ... LIMIT ...` subset for structured graph retrieval
 - **Hybrid dependency graphing** — Regex-first dependency edges, with language/project metadata probes for future semantic analyzers
-- **Interactive TUI** — Terminal.Gui v2 interface for browsing, scanning, keyword search, and graph search
-- **Local web GUI** — Keyword search, graph search, interactive 2D graph exploration, and controllable 3D view on port 8085 by default
+- **Interactive TUI** — Terminal.Gui v2 interface for browsing, scanning, keyword search, graph search, and graph query
+- **Local web GUI** — Keyword search, graph search/query, interactive 2D graph exploration, and controllable 3D view on port 8085 by default
 - **Project management** — Register, describe, update, and delete indexed projects
 - **Single binary** — Native AOT compiled, no runtime dependency required
 
@@ -57,6 +58,12 @@ Scanning can be launched from the terminal interface with method/comment extract
 | C/C++ | `.c`, `.cc`, `.cpp`, `.cxx`, `.h`, `.hpp`, `.hh`, `.hxx` | class / struct | graph dependency scan only | include, inheritance, `new`, type usage |
 
 ## Installation
+
+### Platform Status
+
+CodeScan is currently tested first on Windows PowerShell. macOS/Linux-compatible CLI usage and skill command wrappers are being prepared.
+
+On Linux-like environments, CodeScan can currently be used by building directly from source with the .NET SDK.
 
 ### Prerequisites
 
@@ -100,6 +107,9 @@ codescan search "HttpClient"
 codescan graph "HttpClient"
 codescan search "HttpClient" --graph --depth 2
 
+# Cypher-like graph query
+codescan query "MATCH (c:class)-[r:uses_type]->(t:type) WHERE t.label = 'HttpClient'"
+
 # Launch interactive TUI
 codescan tui
 
@@ -115,6 +125,8 @@ codescan gui start --port 8085
 | `list <path>` | Scan with custom filtering and output options |
 | `search <query>` | Hybrid full-text + git log search |
 | `graph [query]` | Search and inspect source knowledge graph |
+| `query <graph-query>` | Run the CodeScan Cypher-like graph query subset |
+| `cypher <graph-query>` | Alias for `query` |
 | `gui start|stop` | Start or stop the local web GUI viewer |
 | `projects` | List all registered projects with stats |
 | `project <id>` | Show project summary or `--detail` for full view |
@@ -139,7 +151,74 @@ codescan search "config" --project 1
 # Search the graph
 codescan search "HttpClient" --graph --depth 2
 codescan graph "SearchCommand" --project 1
+
+# Treat a search argument as a graph query
+codescan search "MATCH (f:file)-[r:imports]->(m:module) LIMIT 20" --query
 ```
+
+### Graph Query
+
+CodeScan supports a Cypher-like query subset for the graph data it actually stores. It is designed for CLI users, AI agents, and automation scripts that need structured graph retrieval without direct SQL access.
+
+This is not full Cypher. It maps to CodeScan's SQLite-backed source graph and returns a `GraphData` result that CLI, TUI, and GUI can render.
+
+Supported patterns:
+
+```cypher
+MATCH (n:kind)
+MATCH (a:kind)-[r:edge_kind]->(b:kind)
+```
+
+Supported `WHERE` fields:
+
+| Alias Type | Fields |
+|------------|--------|
+| Node aliases | `kind`, `label`, `path`, `detail` |
+| Edge aliases | `kind`, `label` |
+
+Supported operators:
+
+| Operator | Example |
+|----------|---------|
+| `=` | `t.label = 'HttpClient'` |
+| `CONTAINS` | `c.label CONTAINS 'Command'` |
+| `STARTS WITH` | `m.label STARTS WITH 'System'` |
+| `ENDS WITH` | `f.path ENDS WITH '.cs'` |
+
+Supported clauses:
+
+| Clause | Behavior |
+|--------|----------|
+| `WHERE ... AND ...` | Filters matched nodes/edges |
+| `RETURN ...` | Accepted for readability, ignored by the renderer |
+| `LIMIT <n>` | Limits matched seed nodes/edges |
+
+Examples:
+
+```bash
+# Find class nodes
+codescan query "MATCH (c:class) WHERE c.label CONTAINS 'Service' LIMIT 20"
+
+# Find classes that use a type
+codescan query "MATCH (c:class)-[r:uses_type]->(t:type) WHERE t.label = 'HttpClient'"
+
+# Find file imports
+codescan query "MATCH (f:file)-[r:imports]->(m:module) WHERE m.label CONTAINS 'System.Net'"
+
+# Find author-to-method relationships and expand one neighbor hop
+codescan query "MATCH (a:author)-[r:authored]->(m:method) WHERE a.label CONTAINS 'kim'" --depth 1
+
+# `graph` auto-detects MATCH queries
+codescan graph "MATCH (c:class)-[r:creates]->(t:type) LIMIT 30"
+```
+
+Common node kinds:
+
+`project`, `directory`, `file`, `class`, `method`, `comment`, `doc`, `author`, `type`, `module`
+
+Common edge kinds:
+
+`contains`, `defines`, `authored`, `has_comment`, `documents`, `imports`, `inherits_or_implements`, `creates`, `uses_type`
 
 ### GUI
 
@@ -154,12 +233,15 @@ codescan gui start --port 8090
 codescan gui stop
 ```
 
-Open `http://127.0.0.1:8085/` after starting the GUI. The viewer provides keyword search, graph search, a Neo4jClient-like 2D graph canvas, and a controllable 3D graph view.
+Open `http://127.0.0.1:8085/` after starting the GUI. The viewer provides keyword search, graph search, Cypher-like graph query, a Neo4jClient-like 2D graph canvas, and a controllable 3D graph view.
 
 GUI graph controls:
 
 | Control | Behavior |
 |---------|----------|
+| `Keyword` | Run full-text keyword search |
+| `Graph Search` | Search graph nodes by keyword and expand neighbors |
+| `Query` | Run `MATCH ...` graph query and render the result |
 | 2D drag background | Pan the graph |
 | 2D mouse wheel | Zoom around the cursor |
 | 2D drag node | Reposition a node |
@@ -261,6 +343,7 @@ CodeScan/
 │   ├── CommentExtractor.cs     #   Comment extraction with context
 │   ├── GitBlameService.cs      #   Git blame per method
 │   ├── GitLogSearchService.cs  #   Hybrid git log search
+│   ├── GraphQuery.cs           #   Cypher-like MATCH query parser
 │   ├── GraphModels.cs          #   Source graph DTOs
 │   ├── SqliteStore.cs          #   SQLite DB with FTS5 full-text search
 │   └── TreeFormatter.cs        #   Tree/flat output formatting

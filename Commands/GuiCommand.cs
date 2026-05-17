@@ -183,6 +183,23 @@ public static class GuiCommand
             return JsonResponse(db.SearchGraph(query, projectId, depth, limit));
         }
 
+        if (path == "/api/query")
+        {
+            var query = queryString.GetValueOrDefault("q") ?? "";
+            var depth = ParseInt(queryString.GetValueOrDefault("depth"), 0);
+            var limit = ParseInt(queryString.GetValueOrDefault("limit"), 100);
+            var projectId = ParseLong(queryString.GetValueOrDefault("project"));
+            using var db = new SqliteStore(AppPaths.DbPath);
+            try
+            {
+                return JsonResponse(db.QueryGraph(query, projectId, depth, limit));
+            }
+            catch (GraphQueryParseException ex)
+            {
+                return new ResponsePayload(400, "Bad Request", "text/plain; charset=utf-8", ex.Message);
+            }
+        }
+
         if (path == "/api/projects")
         {
             using var db = new SqliteStore(AppPaths.DbPath);
@@ -357,14 +374,14 @@ public static class GuiCommand
       <label for="project">Project</label>
       <select id="project"><option value="">All latest projects</option></select>
       <label for="query">Search</label>
-      <div class="row"><input id="query" placeholder="class, method, file, type, author" /><button id="clear">Clear</button></div>
+      <div class="row"><input id="query" placeholder="keyword or MATCH (c:class)-[r]->(t:type)" /><button id="clear">Clear</button></div>
       <label for="type">Keyword Type</label>
       <select id="type">
         <option value="">All</option><option value="method">Method</option><option value="file">File</option><option value="doc">Doc</option><option value="comment">Comment</option><option value="commit">Commit</option>
       </select>
       <label for="depth">Graph Depth</label>
       <select id="depth"><option>0</option><option selected>1</option><option>2</option><option>3</option><option>4</option></select>
-      <div class="actions"><button class="primary" id="graph">Graph Search</button><button id="keyword">Keyword</button></div>
+      <div class="actions"><button class="primary" id="graph">Graph Search</button><button id="graphQuery">Query</button><button id="keyword">Keyword</button></div>
       <div class="check"><input type="checkbox" id="labels" checked /> <span>Show node labels</span></div>
       <div class="check"><input type="checkbox" id="edgeLabels" checked /> <span>Show edge labels</span></div>
       <div class="legend" id="legend"></div>
@@ -405,15 +422,18 @@ public static class GuiCommand
     async function api(path){ const r=await fetch(path); if(!r.ok) throw new Error(await r.text()); return await r.json(); }
     async function loadProjects(){ const data=await api("/api/projects"); for(const p of data.projects){ const o=document.createElement("option"); o.value=p.id; o.textContent=`#${p.id} ${p.rootPath}`; $("project").appendChild(o); } }
     function params(){ const q=encodeURIComponent($("query").value.trim()); const p=$("project").value; return `q=${q}${p?`&project=${p}`:""}`; }
-    $("graph").onclick = async () => { const data=await api(`/api/graph?depth=${$("depth").value}&limit=180&${params()}`); setGraph(data); };
+    $("graph").onclick = async () => runGraphSearch();
+    $("graphQuery").onclick = async () => runGraphQuery();
     $("keyword").onclick = async () => { const t=$("type").value; const data=await api(`/api/search?limit=80${t?`&type=${t}`:""}&${params()}`); renderKeywordResults(data.results); };
     $("clear").onclick = () => { $("query").value=""; setGraph({nodes:[],edges:[]}); renderDetail(null); };
-    $("query").addEventListener("keydown", e => { if(e.key==="Enter") $("graph").click(); });
+    $("query").addEventListener("keydown", e => { if(e.key==="Enter") ($("query").value.trim().toLowerCase().startsWith("match ") ? $("graphQuery") : $("graph")).click(); });
     $("labels").onchange = draw; $("edgeLabels").onchange = draw;
     $("fit").onclick = () => { fitView(); draw(); };
     $("resetCamera").onclick = () => { state.view={x:0,y:0,zoom:1}; state.camera={yaw:-0.45,pitch:0.55,distance:720,x:0,y:0}; fitView(); draw(); };
     $("view2d").onclick = () => setMode("2d");
     $("view3d").onclick = () => setMode("3d");
+    async function runGraphSearch(){ try{ const data=await api(`/api/graph?depth=${$("depth").value}&limit=180&${params()}`); setGraph(data); } catch(e){ $("stats").textContent=e.message; } }
+    async function runGraphQuery(){ try{ const data=await api(`/api/query?depth=${$("depth").value}&limit=180&${params()}`); setGraph(data); } catch(e){ $("stats").textContent=`Query error: ${e.message}`; } }
     function setMode(mode){
       state.mode=mode;
       const is3d=mode==="3d";
