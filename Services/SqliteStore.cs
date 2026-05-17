@@ -689,6 +689,37 @@ public sealed class SqliteStore : IResultStore, IDisposable
                 }
             }
 
+            if (entry.Dependencies.Count > 0)
+            {
+                foreach (var dep in entry.Dependencies)
+                {
+                    var fromNodeId = entryNodeId;
+                    if (dep.FromKind == "class" && !string.IsNullOrWhiteSpace(dep.FromName) && dep.FromName != "Global")
+                    {
+                        fromNodeId = UpsertGraphNode(
+                            scanId,
+                            $"class:{entry.RelativePath}:{dep.FromName}",
+                            "class",
+                            dep.FromName,
+                            entry.RelativePath,
+                            $"Class in {entry.RelativePath}");
+                        InsertGraphEdge(scanId, entryNodeId, fromNodeId, "contains", "contains");
+                    }
+
+                    var toNodeId = UpsertGraphNode(
+                        scanId,
+                        $"dependency:{dep.ToKind}:{dep.ToName}",
+                        dep.ToKind,
+                        dep.ToName,
+                        "",
+                        $"{dep.Strategy} {dep.Detail}".Trim());
+                    var label = string.IsNullOrWhiteSpace(dep.Detail)
+                        ? dep.Strategy
+                        : $"{dep.Strategy}: {dep.Detail}";
+                    InsertGraphEdge(scanId, fromNodeId, toNodeId, dep.EdgeKind, label);
+                }
+            }
+
             // FTS index files
             if (!entry.IsDirectory)
             {

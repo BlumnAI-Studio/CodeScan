@@ -11,4 +11,5 @@ public sealed class FileEntry
     public string Extension => Path.GetExtension(Name).ToLowerInvariant();
     public List<MethodEntry> Methods { get; set; } = [];
     public List<CommentBlock> Comments { get; set; } = [];
+    public List<SourceDependency> Dependencies { get; set; } = [];
 }

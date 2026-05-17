@@ -34,9 +34,11 @@ public static class GuiCommand
             throw;
         }
 
+        var stopping = false;
         Console.CancelKeyPress += (_, e) =>
         {
             e.Cancel = true;
+            stopping = true;
             TryDelete(pidPath);
             listener.Stop();
         };
@@ -46,13 +48,29 @@ public static class GuiCommand
 
         try
         {
-            while (true)
+            while (!stopping)
             {
-                var client = listener.AcceptTcpClient();
-                _ = Task.Run(() => HandleClient(client));
+                try
+                {
+                    var client = listener.AcceptTcpClient();
+                    _ = Task.Run(() => HandleClient(client));
+                }
+                catch (SocketException ex) when (!stopping)
+                {
+                    Console.Error.WriteLine($"[gui] socket accept warning: {ex.SocketErrorCode}");
+                    Thread.Sleep(100);
+                }
+                catch (ObjectDisposedException) when (!stopping)
+                {
+                    Thread.Sleep(100);
+                }
             }
         }
-        catch (SocketException)
+        catch (SocketException) when (stopping)
+        {
+            return 0;
+        }
+        catch (ObjectDisposedException) when (stopping)
         {
             return 0;
         }
@@ -60,6 +78,8 @@ public static class GuiCommand
         {
             TryDelete(pidPath);
         }
+
+        return 0;
     }
 
     public static int Stop(int port)
@@ -267,79 +287,167 @@ public static class GuiCommand
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>CodeScan GUI</title>
+  <title>CodeScan Graph</title>
   <style>
-    :root { color-scheme: light; --line:#d7dde5; --ink:#17202a; --muted:#647284; --accent:#0b7285; --panel:#f6f8fb; --surface:#ffffff; }
-    * { box-sizing: border-box; }
-    body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif; color:var(--ink); background:#eef2f6; }
-    header { height:52px; display:flex; align-items:center; gap:16px; padding:0 18px; background:#ffffff; border-bottom:1px solid var(--line); }
-    h1 { font-size:18px; margin:0; font-weight:700; }
-    main { display:grid; grid-template-columns:360px 1fr; height:calc(100vh - 52px); min-height:520px; }
-    aside { border-right:1px solid var(--line); background:var(--surface); padding:14px; overflow:auto; }
-    section { min-width:0; display:grid; grid-template-rows:1fr 160px; }
+    :root { color-scheme: light; --ink:#15202b; --muted:#657386; --line:#d8e0ea; --soft:#f3f6fa; --surface:#ffffff; --accent:#0b7285; --accent2:#7048e8; --warn:#b7791f; --good:#2f9e44; }
+    * { box-sizing:border-box; }
+    body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif; color:var(--ink); background:#e9eef5; }
+    header { height:54px; display:flex; align-items:center; gap:14px; padding:0 16px; background:#fff; border-bottom:1px solid var(--line); }
+    h1 { font-size:18px; line-height:1; margin:0; }
+    .sub { color:var(--muted); font-size:12px; }
+    .stats { margin-left:auto; color:var(--muted); font-size:12px; }
+    main { display:grid; grid-template-columns:330px minmax(420px,1fr) 330px; height:calc(100vh - 54px); min-height:620px; }
+    aside, .detail { background:var(--surface); overflow:auto; }
+    aside { border-right:1px solid var(--line); padding:14px; }
+    .detail { border-left:1px solid var(--line); display:flex; flex-direction:column; }
+    .stage { min-width:0; position:relative; background:#f8fafc; }
     label { display:block; font-size:12px; color:var(--muted); margin:12px 0 5px; }
     input, select { width:100%; height:34px; border:1px solid var(--line); border-radius:6px; padding:0 9px; background:white; color:var(--ink); }
-    .row { display:grid; grid-template-columns:1fr 84px; gap:8px; align-items:end; }
-    .actions { display:flex; gap:8px; margin:14px 0; }
-    button { height:34px; border:1px solid #aab6c4; background:#ffffff; border-radius:6px; padding:0 12px; color:var(--ink); cursor:pointer; }
-    button.primary { background:var(--accent); color:white; border-color:var(--accent); }
-    canvas { width:100%; height:100%; display:block; background:#fbfcfe; }
-    #results { border-top:1px solid var(--line); background:var(--surface); overflow:auto; padding:10px 12px; font-family:Consolas,monospace; font-size:12px; }
-    .item { border-bottom:1px solid var(--line); padding:9px 0; }
-    .tag { display:inline-block; min-width:72px; color:var(--accent); font-weight:700; }
-    .meta { color:var(--muted); margin-top:2px; overflow-wrap:anywhere; }
-    .stats { margin-left:auto; color:var(--muted); }
-    @media (max-width: 760px) { main { grid-template-columns:1fr; grid-template-rows:auto 1fr; height:auto; min-height:calc(100vh - 52px); } aside { border-right:0; border-bottom:1px solid var(--line); } section { height:70vh; } }
+    button { height:34px; border:1px solid #aab6c4; background:#fff; border-radius:6px; padding:0 11px; color:var(--ink); cursor:pointer; }
+    button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+    button.active { border-color:var(--accent); color:var(--accent); background:#e6f6f8; }
+    .row { display:grid; grid-template-columns:1fr 72px; gap:8px; }
+    .actions, .tools { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
+    .check { display:flex; gap:8px; align-items:center; margin:8px 0; color:var(--muted); font-size:12px; }
+    .check input { width:auto; height:auto; }
+    #graphCanvas { width:100%; height:100%; display:block; cursor:grab; }
+    #graphCanvas.dragging { cursor:grabbing; }
+    .toolbar { position:absolute; left:14px; top:14px; display:flex; gap:8px; flex-wrap:wrap; max-width:calc(100% - 28px); }
+    .hintbar { position:absolute; left:14px; bottom:12px; right:14px; color:#617083; font-size:12px; pointer-events:none; display:flex; justify-content:space-between; gap:10px; }
+    .legend { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 12px; }
+    .chip { border:1px solid var(--line); border-radius:999px; padding:4px 8px; font-size:12px; cursor:pointer; user-select:none; background:#fff; }
+    .chip.off { opacity:.42; text-decoration:line-through; }
+    .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; vertical-align:-1px; }
+    .list { margin-top:10px; border-top:1px solid var(--line); }
+    .item { padding:9px 2px; border-bottom:1px solid var(--line); cursor:pointer; }
+    .item:hover, .item.selected { background:#f2f8fb; }
+    .tag { display:inline-block; min-width:74px; color:var(--accent); font-weight:700; font-size:12px; }
+    .meta { color:var(--muted); margin-top:2px; overflow-wrap:anywhere; font-size:12px; }
+    .panel-head { padding:14px; border-bottom:1px solid var(--line); }
+    .panel-head h2 { margin:4px 0 0; font-size:16px; line-height:1.25; overflow-wrap:anywhere; }
+    .panel-body { padding:14px; overflow:auto; }
+    .kv { display:grid; grid-template-columns:86px 1fr; gap:7px 10px; margin:10px 0; font-size:12px; }
+    .kv .k { color:var(--muted); }
+    .rel { margin-top:12px; }
+    .rel h3 { font-size:12px; color:var(--muted); margin:0 0 6px; text-transform:uppercase; }
+    .rel-row { padding:7px 0; border-top:1px solid var(--line); cursor:pointer; }
+    .empty { color:var(--muted); padding:12px 0; }
+    @media (max-width: 980px) { main { grid-template-columns:1fr; grid-template-rows:auto 70vh auto; height:auto; } aside, .detail { border:0; border-bottom:1px solid var(--line); } }
   </style>
 </head>
 <body>
-  <header><h1>CodeScan</h1><span class="stats" id="stats">Ready</span></header>
+  <header>
+    <h1>CodeScan Graph</h1>
+    <span class="sub">keyword search + source knowledge graph</span>
+    <span class="stats" id="stats">Ready</span>
+  </header>
   <main>
     <aside>
       <label for="project">Project</label>
       <select id="project"><option value="">All latest projects</option></select>
       <label for="query">Search</label>
-      <div class="row"><input id="query" placeholder="keyword, method, file, author" /><button id="clear">Clear</button></div>
-      <label for="type">Keyword type</label>
+      <div class="row"><input id="query" placeholder="class, method, file, type, author" /><button id="clear">Clear</button></div>
+      <label for="type">Keyword Type</label>
       <select id="type">
         <option value="">All</option><option value="method">Method</option><option value="file">File</option><option value="doc">Doc</option><option value="comment">Comment</option><option value="commit">Commit</option>
       </select>
-      <label for="view">Graph view</label>
-      <select id="view"><option value="2d">2D graph</option><option value="3d">3D graph</option></select>
-      <label for="depth">Graph depth</label>
+      <label for="depth">Graph Depth</label>
       <select id="depth"><option>0</option><option selected>1</option><option>2</option><option>3</option><option>4</option></select>
-      <div class="actions"><button class="primary" id="keyword">Keyword Search</button><button id="graph">Graph Search</button></div>
-      <div id="list"></div>
+      <div class="actions"><button class="primary" id="graph">Graph Search</button><button id="keyword">Keyword</button></div>
+      <div class="check"><input type="checkbox" id="labels" checked /> <span>Show node labels</span></div>
+      <div class="check"><input type="checkbox" id="edgeLabels" checked /> <span>Show edge labels</span></div>
+      <div class="legend" id="legend"></div>
+      <div class="list" id="list"></div>
     </aside>
-    <section>
-      <canvas id="canvas"></canvas>
-      <div id="results"></div>
+    <section class="stage">
+      <canvas id="graphCanvas"></canvas>
+      <div class="toolbar">
+        <button id="view2d" class="active">2D</button>
+        <button id="view3d">3D</button>
+        <button id="fit">Fit</button>
+        <button id="resetCamera">Reset Camera</button>
+      </div>
+      <div class="hintbar"><span id="modeHint">2D: drag canvas to pan, wheel to zoom, drag node to reposition</span><span>Click node or edge for detail</span></div>
+    </section>
+    <section class="detail">
+      <div class="panel-head">
+        <span class="tag" id="detailKind">DETAIL</span>
+        <h2 id="detailTitle">No selection</h2>
+        <div class="meta" id="detailMeta">Run graph search, then click a node or edge.</div>
+      </div>
+      <div class="panel-body" id="detailBody"></div>
     </section>
   </main>
   <script>
     const $ = id => document.getElementById(id);
-    const canvas = $("canvas"), ctx = canvas.getContext("2d");
-    let graph = {nodes:[], edges:[]}, tick = 0, anim = 0;
-    const color = {project:"#0b7285", directory:"#5c7cfa", file:"#2f9e44", class:"#f08c00", method:"#c2255c", comment:"#7048e8", doc:"#087f5b", author:"#495057"};
-    function fit(){ const r=canvas.getBoundingClientRect(); canvas.width=Math.max(320,r.width*devicePixelRatio); canvas.height=Math.max(260,r.height*devicePixelRatio); }
-    addEventListener("resize", () => { fit(); draw(); });
-    fit();
+    const canvas = $("graphCanvas"), ctx = canvas.getContext("2d");
+    const colors = { project:"#0b7285", directory:"#5c7cfa", file:"#2f9e44", class:"#f08c00", method:"#c2255c", comment:"#7048e8", doc:"#087f5b", author:"#495057", type:"#b7791f", module:"#1971c2" };
+    const state = {
+      graph:{nodes:[], edges:[]}, visibleKinds:new Set(), selected:null, hovered:null, mode:"2d",
+      view:{x:0,y:0,zoom:1}, camera:{yaw:-0.45,pitch:0.55,distance:720,x:0,y:0},
+      pointer:null, dragNode:null, screen:new Map(), edgeScreen:[]
+    };
+    let cw = 800, ch = 600;
+    function fitCanvas(){ const r=canvas.getBoundingClientRect(); const d=devicePixelRatio||1; cw=Math.max(320,r.width); ch=Math.max(260,r.height); canvas.width=Math.round(cw*d); canvas.height=Math.round(ch*d); ctx.setTransform(d,0,0,d,0,0); }
+    addEventListener("resize", () => { fitCanvas(); draw(); });
+    fitCanvas();
     async function api(path){ const r=await fetch(path); if(!r.ok) throw new Error(await r.text()); return await r.json(); }
     async function loadProjects(){ const data=await api("/api/projects"); for(const p of data.projects){ const o=document.createElement("option"); o.value=p.id; o.textContent=`#${p.id} ${p.rootPath}`; $("project").appendChild(o); } }
-    function params(extra=""){ const q=encodeURIComponent($("query").value.trim()); const p=$("project").value; return `q=${q}${p?`&project=${p}`:""}${extra}`; }
-    $("keyword").onclick = async () => { const t=$("type").value; const data=await api(`/api/search?limit=80${t?`&type=${t}`:""}&${params()}`); renderResults(data.results); };
-    $("graph").onclick = async () => { const data=await api(`/api/graph?depth=${$("depth").value}&limit=140&${params()}`); setGraph(data); };
-    $("clear").onclick = () => { $("query").value=""; $("results").textContent=""; setGraph({nodes:[], edges:[]}); };
-    $("view").onchange = draw;
-    $("query").addEventListener("keydown", e => { if(e.key==="Enter") $("keyword").click(); });
-    function renderResults(rows){ $("stats").textContent=`${rows.length} keyword results`; $("list").innerHTML=""; $("results").textContent=""; for(const r of rows){ const d=document.createElement("div"); d.className="item"; d.innerHTML=`<span class="tag">${escapeHtml(r.type)}</span>${escapeHtml(r.name)}<div class="meta">${escapeHtml(r.path||"")}</div><div class="meta">${escapeHtml(r.excerpt||"")}</div>`; $("list").appendChild(d); } }
-    function setGraph(data){ graph=data; layout(); $("stats").textContent=`${graph.nodes.length} nodes, ${graph.edges.length} edges`; $("list").innerHTML=""; for(const n of graph.nodes.slice(0,80)){ const d=document.createElement("div"); d.className="item"; d.innerHTML=`<span class="tag">${escapeHtml(n.kind)}</span>${escapeHtml(n.label)}<div class="meta">${escapeHtml(n.path||n.detail||"")}</div>`; $("list").appendChild(d); } cancelAnimationFrame(anim); loop(); }
-    function layout(){ const w=canvas.width,h=canvas.height,cx=w/2,cy=h/2; graph.nodes.forEach((n,i)=>{ const a=i*2.399, r=Math.min(w,h)*(0.12+0.36*Math.sqrt((i+1)/Math.max(1,graph.nodes.length))); n.x=cx+Math.cos(a)*r; n.y=cy+Math.sin(a)*r; n.z=Math.sin(a*1.7)*180; }); }
-    function loop(){ tick+=0.01; draw(); if($("view").value==="3d") anim=requestAnimationFrame(loop); }
-    function draw(){ fit(); const w=canvas.width,h=canvas.height; ctx.clearRect(0,0,w,h); const map=new Map(graph.nodes.map(n=>[n.id,n])); ctx.lineWidth=1*devicePixelRatio; ctx.strokeStyle="#bac4d0"; for(const e of graph.edges){ const a=map.get(e.from), b=map.get(e.to); if(!a||!b) continue; const p=project(a,w,h), q=project(b,w,h); ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke(); } for(const n of graph.nodes){ const p=project(n,w,h); const radius=(n.kind==="project"?8:5)*devicePixelRatio*p.s; ctx.fillStyle=color[n.kind]||"#343a40"; ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(3,radius),0,Math.PI*2); ctx.fill(); ctx.fillStyle="#17202a"; ctx.font=`${12*devicePixelRatio}px system-ui`; ctx.fillText(n.label.slice(0,38),p.x+8*devicePixelRatio,p.y-6*devicePixelRatio); } }
-    function project(n,w,h){ if($("view").value==="2d") return {x:n.x,y:n.y,s:1}; const a=tick, x=(n.x-w/2)*Math.cos(a)-n.z*Math.sin(a), z=(n.x-w/2)*Math.sin(a)+n.z*Math.cos(a); const s=450/(450+z); return {x:w/2+x*s,y:h/2+(n.y-h/2)*s,s}; }
-    function escapeHtml(v){ return String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-    loadProjects().then(() => $("graph").click()).catch(e => $("stats").textContent=e.message);
+    function params(){ const q=encodeURIComponent($("query").value.trim()); const p=$("project").value; return `q=${q}${p?`&project=${p}`:""}`; }
+    $("graph").onclick = async () => { const data=await api(`/api/graph?depth=${$("depth").value}&limit=180&${params()}`); setGraph(data); };
+    $("keyword").onclick = async () => { const t=$("type").value; const data=await api(`/api/search?limit=80${t?`&type=${t}`:""}&${params()}`); renderKeywordResults(data.results); };
+    $("clear").onclick = () => { $("query").value=""; setGraph({nodes:[],edges:[]}); renderDetail(null); };
+    $("query").addEventListener("keydown", e => { if(e.key==="Enter") $("graph").click(); });
+    $("labels").onchange = draw; $("edgeLabels").onchange = draw;
+    $("fit").onclick = () => { fitView(); draw(); };
+    $("resetCamera").onclick = () => { state.view={x:0,y:0,zoom:1}; state.camera={yaw:-0.45,pitch:0.55,distance:720,x:0,y:0}; fitView(); draw(); };
+    $("view2d").onclick = () => setMode("2d");
+    $("view3d").onclick = () => setMode("3d");
+    function setMode(mode){ state.mode=mode; $("view2d").classList.toggle("active",mode==="2d"); $("view3d").classList.toggle("active",mode==="3d"); $("modeHint").textContent = mode==="2d" ? "2D: drag canvas to pan, wheel to zoom, drag node to reposition" : "3D: drag to orbit, Shift/right-drag to pan, wheel to zoom"; draw(); }
+    function setGraph(data){
+      state.graph = { nodes:(data.nodes||[]).map(n=>({...n})), edges:(data.edges||[]).map(e=>({...e})) };
+      state.selected=null; layoutGraph(); buildLegend(); renderList(); fitView(); draw();
+      $("stats").textContent = `${state.graph.nodes.length} nodes, ${state.graph.edges.length} edges`;
+      if(state.graph.nodes[0]) selectNode(state.graph.nodes[0]);
+    }
+    function layoutGraph(){
+      const nodes=state.graph.nodes, edges=state.graph.edges, map=new Map(nodes.map(n=>[n.id,n]));
+      nodes.forEach((n,i)=>{ const a=i*2.399, r=60+22*Math.sqrt(i+1); n.x=Math.cos(a)*r; n.y=Math.sin(a)*r; n.z=(i%7-3)*42; n.vx=0; n.vy=0; n.r=nodeRadius(n); });
+      for(let iter=0; iter<180 && nodes.length<260; iter++){
+        for(let i=0;i<nodes.length;i++) for(let j=i+1;j<nodes.length;j++){ const a=nodes[i], b=nodes[j], dx=a.x-b.x, dy=a.y-b.y, d2=dx*dx+dy*dy+0.1, f=900/d2; a.vx+=dx*f*.002; a.vy+=dy*f*.002; b.vx-=dx*f*.002; b.vy-=dy*f*.002; }
+        for(const e of edges){ const a=map.get(e.from), b=map.get(e.to); if(!a||!b) continue; const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)||1, target=90; const f=(d-target)*0.006; a.vx+=dx/d*f; a.vy+=dy/d*f; b.vx-=dx/d*f; b.vy-=dy/d*f; }
+        for(const n of nodes){ n.vx*=0.82; n.vy*=0.82; n.x+=n.vx; n.y+=n.vy; }
+      }
+    }
+    function nodeRadius(n){ return n.kind==="project"?11:n.kind==="directory"?8:n.kind==="class"?8:n.kind==="method"?6:n.kind==="type"?7:5; }
+    function buildLegend(){ const kinds=[...new Set(state.graph.nodes.map(n=>n.kind))].sort(); state.visibleKinds=new Set(kinds); $("legend").innerHTML=""; for(const k of kinds){ const el=document.createElement("span"); el.className="chip"; el.innerHTML=`<span class="dot" style="background:${colors[k]||"#748094"}"></span>${escapeHtml(k)}`; el.onclick=()=>{ if(state.visibleKinds.has(k)) state.visibleKinds.delete(k); else state.visibleKinds.add(k); el.classList.toggle("off",!state.visibleKinds.has(k)); renderList(); draw(); }; $("legend").appendChild(el); } }
+    function visibleNode(n){ return state.visibleKinds.size===0 || state.visibleKinds.has(n.kind); }
+    function visibleEdge(e,map){ const a=map.get(e.from), b=map.get(e.to); return a&&b&&visibleNode(a)&&visibleNode(b); }
+    function renderList(){ const root=$("list"); root.innerHTML=""; for(const n of state.graph.nodes.filter(visibleNode).slice(0,120)){ const d=document.createElement("div"); d.className="item"; d.dataset.id=n.id; d.innerHTML=`<span class="tag">${escapeHtml(n.kind)}</span>${escapeHtml(n.label)}<div class="meta">${escapeHtml(n.path||n.detail||"")}</div>`; d.onclick=()=>selectNode(n); root.appendChild(d); } }
+    function renderKeywordResults(rows){ $("stats").textContent=`${rows.length} keyword results`; $("list").innerHTML=""; for(const r of rows){ const d=document.createElement("div"); d.className="item"; d.innerHTML=`<span class="tag">${escapeHtml(r.type)}</span>${escapeHtml(r.name)}<div class="meta">${escapeHtml(r.path||"")}</div><div class="meta">${escapeHtml(r.excerpt||"")}</div>`; $("list").appendChild(d); } }
+    function fitView(){ const ns=state.graph.nodes.filter(visibleNode); if(!ns.length){state.view={x:0,y:0,zoom:1}; return;} let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity; for(const n of ns){minX=Math.min(minX,n.x);maxX=Math.max(maxX,n.x);minY=Math.min(minY,n.y);maxY=Math.max(maxY,n.y);} const sx=cw/Math.max(80,maxX-minX+120), sy=ch/Math.max(80,maxY-minY+120); state.view.zoom=Math.min(2.2,Math.max(.35,Math.min(sx,sy))); state.view.x=cw/2-(minX+maxX)/2*state.view.zoom; state.view.y=ch/2-(minY+maxY)/2*state.view.zoom; }
+    function worldToScreen(n){ if(state.mode==="2d") return {x:n.x*state.view.zoom+state.view.x,y:n.y*state.view.zoom+state.view.y,s:state.view.zoom,z:0}; const cam=state.camera, cyaw=Math.cos(cam.yaw), syaw=Math.sin(cam.yaw), cp=Math.cos(cam.pitch), sp=Math.sin(cam.pitch); let x=n.x, y=n.y, z=n.z||0; let x1=x*cyaw-z*syaw, z1=x*syaw+z*cyaw; let y1=y*cp-z1*sp, z2=y*sp+z1*cp; const s=cam.distance/(cam.distance+z2+320); return {x:cw/2+cam.x+x1*s,y:ch/2+cam.y+y1*s,s,z:z2}; }
+    function draw(){ fitCanvas(); ctx.clearRect(0,0,cw,ch); ctx.fillStyle="#f8fafc"; ctx.fillRect(0,0,cw,ch); drawGrid(); const map=new Map(state.graph.nodes.map(n=>[n.id,n])); state.screen.clear(); state.edgeScreen=[]; const edges=state.graph.edges.filter(e=>visibleEdge(e,map)); for(const e of edges){ const a=map.get(e.from), b=map.get(e.to), p=worldToScreen(a), q=worldToScreen(b); state.edgeScreen.push({edge:e,p,q}); drawEdge(e,p,q); } const nodes=state.graph.nodes.filter(visibleNode).map(n=>({n,p:worldToScreen(n)})).sort((a,b)=>a.p.z-b.p.z); for(const it of nodes){ state.screen.set(it.n.id,it.p); drawNode(it.n,it.p); } }
+    function drawGrid(){ ctx.strokeStyle="#e8edf3"; ctx.lineWidth=1; const step=48; const ox=state.mode==="2d"?state.view.x%step:0, oy=state.mode==="2d"?state.view.y%step:0; for(let x=ox;x<cw;x+=step){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,ch);ctx.stroke();} for(let y=oy;y<ch;y+=step){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(cw,y);ctx.stroke();} }
+    function drawEdge(e,p,q){ const active=state.selected?.type==="edge"&&state.selected.item.id===e.id; ctx.strokeStyle=active?"#0b7285":"#b9c4d0"; ctx.lineWidth=active?2.8:1.2; ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke(); if($("edgeLabels").checked && (active || e.kind)){ const mx=(p.x+q.x)/2, my=(p.y+q.y)/2; ctx.fillStyle="rgba(255,255,255,.9)"; const text=e.kind||e.label||""; ctx.font="11px system-ui"; const w=ctx.measureText(text).width+10; ctx.fillRect(mx-w/2,my-9,w,16); ctx.fillStyle="#536173"; ctx.fillText(text,mx-w/2+5,my+3); } }
+    function drawNode(n,p){ const active=state.selected?.type==="node"&&state.selected.item.id===n.id; const r=Math.max(4,n.r*(state.mode==="3d"?p.s:1)); ctx.fillStyle=colors[n.kind]||"#748094"; ctx.strokeStyle=active?"#111827":"#fff"; ctx.lineWidth=active?3:1.5; ctx.beginPath(); if(n.kind==="file"||n.kind==="doc") roundedRect(p.x-r,p.y-r*.75,r*2,r*1.5,4); else ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.fill(); ctx.stroke(); if($("labels").checked || active){ ctx.font=active?"700 12px system-ui":"12px system-ui"; ctx.fillStyle="#15202b"; ctx.fillText(trim(n.label,36),p.x+r+6,p.y-6); } }
+    function roundedRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r); ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y); }
+    function pickNode(x,y){ let best=null, bd=Infinity; for(const n of state.graph.nodes.filter(visibleNode)){ const p=state.screen.get(n.id); if(!p) continue; const d=Math.hypot(x-p.x,y-p.y), r=Math.max(7,n.r*(state.mode==="3d"?p.s:state.view.zoom)); if(d<r+5 && d<bd){ best=n; bd=d; } } return best; }
+    function pickEdge(x,y){ let best=null, bd=9; for(const it of state.edgeScreen){ const d=distToSegment(x,y,it.p.x,it.p.y,it.q.x,it.q.y); if(d<bd){best=it.edge;bd=d;} } return best; }
+    canvas.addEventListener("mousedown", e=>{ const p=pos(e); canvas.classList.add("dragging"); const n=pickNode(p.x,p.y); state.pointer={x:p.x,y:p.y,button:e.button,shift:e.shiftKey}; if(n&&state.mode==="2d"&&e.button===0){state.dragNode=n; selectNode(n);} else if(n){selectNode(n);} else { const edge=pickEdge(p.x,p.y); if(edge) selectEdge(edge); } });
+    canvas.addEventListener("mousemove", e=>{ const p=pos(e); if(!state.pointer){ const n=pickNode(p.x,p.y), edge=n?null:pickEdge(p.x,p.y); state.hovered=n||edge; draw(); return; } const dx=p.x-state.pointer.x, dy=p.y-state.pointer.y; if(state.dragNode&&state.mode==="2d"){ state.dragNode.x=(p.x-state.view.x)/state.view.zoom; state.dragNode.y=(p.y-state.view.y)/state.view.zoom; } else if(state.mode==="2d"){ state.view.x+=dx; state.view.y+=dy; } else if(state.pointer.shift||state.pointer.button===2){ state.camera.x+=dx; state.camera.y+=dy; } else { state.camera.yaw+=dx*.008; state.camera.pitch=Math.max(-1.2,Math.min(1.2,state.camera.pitch+dy*.008)); } state.pointer.x=p.x; state.pointer.y=p.y; draw(); });
+    addEventListener("mouseup",()=>{ state.pointer=null; state.dragNode=null; canvas.classList.remove("dragging"); });
+    canvas.addEventListener("contextmenu", e=>e.preventDefault());
+    canvas.addEventListener("wheel", e=>{ e.preventDefault(); const p=pos(e); if(state.mode==="2d"){ const old=state.view.zoom, next=Math.max(.15,Math.min(5,old*(e.deltaY<0?1.12:.88))); state.view.x=p.x-(p.x-state.view.x)*(next/old); state.view.y=p.y-(p.y-state.view.y)*(next/old); state.view.zoom=next; } else { state.camera.distance=Math.max(180,Math.min(2200,state.camera.distance*(e.deltaY<0?.9:1.1))); } draw(); }, {passive:false});
+    function selectNode(n){ state.selected={type:"node",item:n}; document.querySelectorAll(".item").forEach(i=>i.classList.toggle("selected",i.dataset.id==n.id)); renderDetail(state.selected); draw(); }
+    function selectEdge(e){ state.selected={type:"edge",item:e}; renderDetail(state.selected); draw(); }
+    function renderDetail(sel){ if(!sel){ $("detailKind").textContent="DETAIL"; $("detailTitle").textContent="No selection"; $("detailMeta").textContent="Run graph search, then click a node or edge."; $("detailBody").innerHTML=""; return; } if(sel.type==="node"){ const n=sel.item; $("detailKind").textContent=n.kind.toUpperCase(); $("detailTitle").textContent=n.label; $("detailMeta").textContent=n.path||`scan ${n.scanId}`; const rel=relations(n); $("detailBody").innerHTML=`<div class="kv"><div class="k">ID</div><div>${n.id}</div><div class="k">Kind</div><div>${escapeHtml(n.kind)}</div><div class="k">Path</div><div>${escapeHtml(n.path||"")}</div><div class="k">Detail</div><div>${escapeHtml(n.detail||"")}</div></div>${rel}`; } else { const e=sel.item, map=new Map(state.graph.nodes.map(n=>[n.id,n])), a=map.get(e.from), b=map.get(e.to); $("detailKind").textContent="EDGE"; $("detailTitle").textContent=e.kind||e.label||"relationship"; $("detailMeta").textContent=`${a?.label||e.from} -> ${b?.label||e.to}`; $("detailBody").innerHTML=`<div class="kv"><div class="k">From</div><div>${escapeHtml(a?.label||e.from)}</div><div class="k">To</div><div>${escapeHtml(b?.label||e.to)}</div><div class="k">Kind</div><div>${escapeHtml(e.kind||"")}</div><div class="k">Label</div><div>${escapeHtml(e.label||"")}</div></div>`; } }
+    function relations(n){ const map=new Map(state.graph.nodes.map(x=>[x.id,x])); const rows=state.graph.edges.filter(e=>e.from===n.id||e.to===n.id).slice(0,18).map(e=>{ const other=map.get(e.from===n.id?e.to:e.from); return `<div class="rel-row" data-id="${other?.id||""}"><b>${escapeHtml(e.kind)}</b><div class="meta">${escapeHtml(other?.label||"")}</div></div>`; }).join(""); setTimeout(()=>document.querySelectorAll(".rel-row[data-id]").forEach(el=>el.onclick=()=>{ const nn=state.graph.nodes.find(x=>String(x.id)===el.dataset.id); if(nn) selectNode(nn); }),0); return `<div class="rel"><h3>Relationships</h3>${rows||'<div class="empty">No visible relationships.</div>'}</div>`; }
+    function pos(e){ const r=canvas.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; }
+    function distToSegment(px,py,x1,y1,x2,y2){ const dx=x2-x1, dy=y2-y1, l2=dx*dx+dy*dy||1; let t=((px-x1)*dx+(py-y1)*dy)/l2; t=Math.max(0,Math.min(1,t)); return Math.hypot(px-(x1+t*dx),py-(y1+t*dy)); }
+    function trim(v,n){ v=String(v||""); return v.length>n?v.slice(0,n-1)+"...":v; }
+    function escapeHtml(v){ return String(v??"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    loadProjects().then(()=>$("graph").click()).catch(e=>$("stats").textContent=e.message);
   </script>
 </body>
 </html>

@@ -6,7 +6,8 @@ public static class CommentExtractor
 {
     private static readonly HashSet<string> Supported = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".cs", ".java", ".kt", ".kts", ".js", ".ts", ".tsx", ".jsx", ".php", ".py"
+        ".cs", ".java", ".kt", ".kts", ".js", ".ts", ".tsx", ".jsx", ".php", ".py",
+        ".go", ".rs", ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".hh", ".hxx"
     };
 
     public static bool IsSupported(string extension) => Supported.Contains(extension);

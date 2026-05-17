@@ -47,6 +47,8 @@ public sealed class ListCommand
                         gitBlame.EnrichWithBlame(file.FullPath, file.Methods);
                 }
 
+                new HybridSourceGraphAnalyzer().Enrich(path, sourceFiles);
+
                 if (options.Verbose)
                     Console.Error.WriteLine();
             }

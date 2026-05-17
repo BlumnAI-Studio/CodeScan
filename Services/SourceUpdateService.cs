@@ -103,6 +103,8 @@ public sealed class SourceUpdateService
                 _log?.Invoke($"  [{i + 1}/{total}] Analyzed {file.Name}");
         }
 
+        new HybridSourceGraphAnalyzer().Enrich(projectPath, sourceFiles);
+
         // Step 3: Save to DB
         _log?.Invoke("[db] Saving scan results...");
 

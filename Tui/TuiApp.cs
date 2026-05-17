@@ -624,6 +624,8 @@ public class MainView : Toplevel
                     AppendResult($"  [{progress}/{total}] {file.Name} ({methodCount} methods)\n");
                 }
             }
+
+            new HybridSourceGraphAnalyzer().Enrich(path, sourceFiles);
         }
         else
         {

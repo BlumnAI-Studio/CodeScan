@@ -12,6 +12,10 @@ public static partial class SourceAnalyzer
         ".js", ".ts", ".tsx", ".jsx",   // JavaScript, TypeScript
         ".php",                         // PHP
         ".py",                          // Python
+        ".go",                          // Go (graph dependency scan)
+        ".rs",                          // Rust (graph dependency scan)
+        ".c", ".cc", ".cpp", ".cxx",    // C/C++ (graph dependency scan)
+        ".h", ".hpp", ".hh", ".hxx",    // C/C++ headers (graph dependency scan)
     };
 
     public static bool IsSourceFile(string extension)
