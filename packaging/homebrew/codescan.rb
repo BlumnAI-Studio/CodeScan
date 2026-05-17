@@ -29,9 +29,12 @@ class Codescan < Formula
   end
 
   def install
-    bin.install "codescan/codescan"
-    pkgshare.install "codescan/VERSION" if File.exist?("codescan/VERSION")
-    doc.install "codescan/README.md" if File.exist?("codescan/README.md")
+    # Homebrew auto-enters the single top-level directory inside the tarball
+    # (our tarball ships `codescan/{codescan, VERSION, README.md}`), so paths
+    # here are relative to the inner `codescan/` directory.
+    bin.install "codescan"
+    pkgshare.install "VERSION" if File.exist?("VERSION")
+    doc.install "README.md" if File.exist?("README.md")
   end
 
   def caveats

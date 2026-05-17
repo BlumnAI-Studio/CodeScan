@@ -1,5 +1,7 @@
 # CodeScan
 
+> English · [한국어](README-KO.md)
+
 A fast CLI/TUI/GUI code scanner and indexer that analyzes source code at the class:method level with git blame integration, stores results in a local SQLite database with full-text and graph search, and provides command-line, terminal, and local web interfaces.
 
 Built as a single native AOT binary with .NET 10.0.
@@ -59,35 +61,131 @@ Scanning can be launched from the terminal interface with method/comment extract
 
 ## Installation
 
-### Platform Status
+<p align="center">
+  <img src="Home/img/support-os.png" alt="CodeScan multi-OS release pipeline — win-x64, linux-x64, linux-arm64, osx-arm64 + SBOM + GitHub Release" width="900" />
+</p>
 
-CodeScan is currently tested first on Windows PowerShell. macOS/Linux-compatible CLI usage and skill command wrappers are being prepared.
+<p align="center"><sub>One release pipeline → four native binaries → three package channels. <a href="https://github.com/psmon/CodeScan/actions/workflows/release.yml">GitHub Actions release.yml</a></sub></p>
 
-On Linux-like environments, CodeScan can currently be used by building directly from source with the .NET SDK.
+### Easy Install — one line per OS
 
-### Prerequisites
+| OS | Architecture | Command |
+|----|--------------|---------|
+| **Windows** | x64 | `winget install psmon.CodeScan` |
+| **macOS** | arm64 (Apple Silicon) | `brew install psmon/codescan/codescan` |
+| **Linux** | x64 / arm64 | `npm install -g codescan-cli` |
 
-- [.NET 10.0 SDK](https://dotnet.microsoft.com/) (for building)
-- Git (for blame integration)
+After install, verify:
+
+```bash
+codescan --version   # should print: codescan v0.4.2 (or newer)
+codescan --help
+```
+
+> **Channel status (v1)**
+> The GitHub Release pipeline is live and produces the binaries every channel pulls from.
+> · **Homebrew tap** — live at [`psmon/homebrew-codescan`](https://github.com/psmon/homebrew-codescan). `brew tap psmon/codescan && brew install codescan` works today on Apple Silicon Macs.
+> · **winget** — manifest at [`packaging/winget/manifests/p/psmon/CodeScan/`](packaging/winget/manifests/p/psmon/CodeScan/), pending PR to `microsoft/winget-pkgs`. Until merged, test locally — see [Testing winget locally on Windows](#testing-winget-locally-on-windows) below.
+> · **npm (`codescan-cli`)** — package at [`packaging/npm/codescan-cli/`](packaging/npm/codescan-cli/), pending publish to npm registry.
+> Until each channel goes live, the [direct installers](#direct-installer-fallback) below work today.
+
+#### Testing winget locally on Windows
+
+The winget manifest is generated for every release. To install from a local manifest file (before the PR to `microsoft/winget-pkgs` is merged), winget requires a one-time opt-in. **Run once in an elevated PowerShell**:
+
+```powershell
+winget settings --enable LocalManifestFiles
+```
+
+Then install from the in-repo manifest (no admin needed after the opt-in):
+
+```powershell
+# from a fresh clone of this repo
+winget install --manifest packaging\winget\manifests\p\psmon\CodeScan\0.4.2
+codescan --version
+```
+
+This is winget's built-in safety guard against arbitrary-yaml installs — once enabled, you can install / validate any local manifest. To disable later: `winget settings --disable LocalManifestFiles` (elevated).
+
+#### Why each channel?
+
+- **winget (Windows)** — Microsoft's native Windows package manager. Portable install, no admin needed, PATH handled automatically.
+- **Homebrew (macOS)** — De-facto package manager for macOS developers. v1 ships **arm64 only** (Apple Silicon); Intel Mac users should build from source or use Rosetta with the arm64 build. Intel Mac shipping is a v2 candidate.
+- **npm (Linux)** — Picked over apt/dnf/snap because npm is universally available across Linux distros and the CodeScan release pipeline can serve **both x64 and arm64** from a single wrapper package. The npm package is a thin postinstall wrapper that downloads the right native binary from GitHub Releases. **Linux arm64 is a deliberate first-class target** — see [Why AOT? — Edge AI trend and the value of a single binary](#why-aot--edge-ai-trend-and-the-value-of-a-single-binary) at the bottom of this README for why arm64 SBC (Raspberry Pi / Jetson / Latte Panda) deployment is a key forward-looking scenario for this tool.
+
+### Linux: x64 vs arm64
+
+The npm wrapper auto-detects your CPU architecture and downloads the matching tarball:
+
+| `process.arch` | Asset downloaded |
+|----------------|------------------|
+| `x64` | `codescan-linux-x64.tar.gz` |
+| `arm64` | `codescan-linux-arm64.tar.gz` |
+
+If `postinstall` cannot reach GitHub (corporate proxy, air-gapped), set `CODESCAN_SKIP_DOWNLOAD=1` during install and grab the binary manually from the [latest release](https://github.com/psmon/CodeScan/releases/latest).
+
+v1 ships **glibc-based Linux only**. musl/Alpine support is a v2 candidate.
+
+### Direct installer (fallback)
+
+For environments without a package manager — or when you want to pin to a specific release.
+
+**Windows (PowerShell):**
+
+```powershell
+iwr https://raw.githubusercontent.com/psmon/CodeScan/main/Script/install-win.ps1 -OutFile install-win.ps1
+.\install-win.ps1                       # latest
+.\install-win.ps1 -Version 0.4.2        # pinned
+```
+
+**Linux / macOS (bash):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/psmon/CodeScan/main/Script/install.sh -o install.sh
+sh install.sh                           # latest
+sh install.sh --version 0.4.2           # pinned
+```
+
+Both installers download the matching release asset from GitHub, verify SHA256 against `checksums.txt`, install to a user-local path (Win: `~/.codescan/bin`, Unix: `~/.local/bin`), and **never touch user data** under `~/.codescan/{db,logs,config}`.
+
+### User data location
+
+| OS | Binary install path | User data |
+|----|--------------------|-----------|
+| Windows | `%USERPROFILE%\.codescan\bin` (or winget-managed) | `%USERPROFILE%\.codescan\{db,logs,config}` |
+| Linux | `~/.local/bin` (or npm-managed) | `~/.codescan/{db,logs,config}` |
+| macOS | `$(brew --prefix)/bin` | `~/.codescan/{db,logs,config}` |
+
+User data is preserved across install / upgrade / uninstall.
 
 ### Build from source
 
 ```bash
-dotnet build
+git clone https://github.com/psmon/CodeScan.git
+cd CodeScan
+dotnet build                        # debug build
+dotnet publish -c Release           # release publish (single-file)
 ```
 
-### Publish as single binary (AOT)
+Prerequisites:
 
-```bash
-dotnet publish -c Release
-```
+- [.NET 10.0 SDK](https://dotnet.microsoft.com/) (for building)
+- Git (for blame integration)
 
-Output: `bin/Release/net10.0/<rid>/codescan` (or `codescan.exe` on Windows)
+Output: `bin/Release/net10.0/<rid>/codescan` (or `codescan.exe` on Windows).
 
-### Deploy scripts
+### Developer deploy scripts
+
+For repo developers who want to bypass GitHub Releases and install directly from a local checkout:
 
 - **Windows:** `Script/deploy-win.ps1`
 - **Linux:** `Script/deploy-linux.sh`
+
+These do `dotnet publish` + install to `~/.codescan/bin` + register PATH — handy during local development but not the recommended path for users.
+
+### Distribution strategy details
+
+See [`Docs/install-distribution-strategy.md`](Docs/install-distribution-strategy.md) for the v1 confirmed plan (asset naming, signing posture, SBOM, CI flow, channel submission procedures).
 
 ## Usage
 
@@ -369,6 +467,58 @@ CodeScan/
 - **Trigram FTS** — Enables effective substring search for CJK languages (Korean, Chinese, Japanese)
 - **Regex-first graphing** — Produces dependency graph hints without requiring a successful build
 - **Semantic-ready strategy layer** — Language-specific compiler analyzers can be added behind `ISourceDependencyStrategy`
+
+## Why AOT? — Edge AI trend and the value of a single binary
+
+> **TL;DR** — Through 2026 and into 2027, AI infrastructure is shifting from cloud-hosted frontier models toward *on-device SLMs (Small Language Models)* and *edge agents*. CodeScan is a .NET 10 Native AOT build — a **single binary with no runtime dependency** — designed to ride that wave: the same artifact runs on a developer laptop, a Raspberry Pi, or a drone-grade SBC.
+
+### 2026: the year SLMs actually started running on the edge
+
+Up to 2025, "edge LLM" was mostly demoware and benchmark posts. 2026 is when that changed:
+
+- **Google Gemma 3 / 3n / 3 270M** — Gemma 3 has been measured at **14.5 tok/s on a Raspberry Pi** and survived a **12-hour Jetson run** with no memory leak or slowdown. The 270M variant uses just **0.75% of a Pixel 9 Pro battery for 25 conversations** thanks to INT4 quantization and Per-Layer Embedding (PLE) caching — small enough to land naturally on everyday devices. ([Gemma 3 270M announcement](https://developers.googleblog.com/en/introducing-gemma-3-270m/), [Gemma 3n overview](https://ai.google.dev/gemma/docs/gemma-3n))
+- **NVIDIA Nemotron 3 Nano (4B and 30B-A3B)** — A hybrid Mixture-of-Experts design: 30B total parameters but only **3B active per forward pass**. The 4B variant, quantized to 4-bit, fits under **3 GB of VRAM** and runs on consumer RTX cards and Jetson-class edge boards. NVIDIA claims **9× throughput** over comparable open models. ([Nemotron 3 Nano Omni announcement](https://developer.nvidia.com/blog/nvidia-nemotron-3-nano-omni-powers-multimodal-agent-reasoning-in-a-single-efficient-open-model/), [Nemotron 3 Nano 4B hybrid architecture](https://news.skrew.ai/nvidia-nemotron-3-nano-4b-hybrid-architecture-edge-ai/))
+- **3B parameters as the 2026 sweet spot** — With production-grade 3–8 bit quantization and a fresh wave of small NPUs landing on single-board computers, the community has converged on **~3B parameters as the practical sweet spot for SBC inference**. ([The Small Model Revolution 2026](https://dev.to/linou518/the-small-model-revolution-2026-3b-parameters-on-raspberry-pi-edge-ais-new-sweet-spot-3pp4))
+
+### 2027 prediction: small devices ship with an LLM *by default*
+
+Extrapolating the curve, the following is likely to be the 2027 baseline:
+
+- **Drones** — Whisper-class speech recognition + a 3B-class SLM handles autonomous mission parsing and replanning without GPS — moving from academic demos to production payloads.
+- **Raspberry Pi 5 + AI HAT+ 2** — The Hailo-10H accelerator (**40 TOPS INT4**) and 8 GB LPDDR4X turn an SBC into a real LLM host. ([Raspberry Pi AI HAT+ 2 release — The Register, Jan 2026](https://www.theregister.com/2026/01/15/pi_5_ai_hat_2/))
+- **x86/ARM SBCs (Latte Panda, Khadas Edge, Orange Pi, …)** — Sitting next to PLCs on the factory floor, local SLMs handle log triage, anomaly detection, and natural-language operator UIs.
+- **Laptops and tablets** — NPU-equipped SoCs (Apple Silicon, Snapdragon X, AMD Strix Halo) make 4B-class on-device inference an **OS-level default**. Samsung, Google, and Motorola's 2026 flagships already ship support for 4B models at Q4 quantization. ([2026 SLM comparison: Phi-4 vs Gemma 3 vs Qwen](https://aegisai.in/best-small-language-models-for-edge-devices-2026-slm-comparison-phi-4-gemma-3-qw/))
+
+All of these targets share the same **structural constraints**:
+
+| Constraint | Implication |
+|------------|-------------|
+| **No runtime present** — drone firmware and SBC minimal images rarely carry a .NET / Java / Python runtime, and adding one is expensive | A single self-contained binary is effectively a requirement |
+| **Memory and storage pressure** — the model already owns most of the RAM; surrounding tools must be small | AOT trimming and single-file compression matter |
+| **Cold-start cost** — battery-powered and event-triggered workloads must respond immediately | "No JIT warmup" is a decisive advantage |
+| **Supply-chain trust** — edge updates are infrequent, so the integrity of the artifact you ship matters more | Single file + SHA256 + SBOM is a natural fit |
+
+### Where Native AOT single-binary fits
+
+CodeScan's build shape lines up with each of those constraints:
+
+- **Instant startup (no JIT)** — Decisive when an edge agent must respond within ~50 ms of a voice trigger. ([Native AOT deployment overview — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/))
+- **Runtime-free single file** — Copy a single `~/.codescan/bin/codescan` and it runs on a Raspberry Pi with no .NET installed.
+- **Smaller memory footprint** — AOT drops the JIT, its metadata, and unreachable runtime services, leaving more RAM for the model.
+- **Reduced attack surface** — Dynamic code generation and most reflection paths are stripped; pairing a single file with an SBOM is friendly to supply-chain audit.
+- **First-class multi-arch** — From v1 the same pipeline publishes `linux-x64`, `linux-arm64`, `osx-arm64`, and `win-x64` as peer artifacts. SBC deployment needs no separate build procedure.
+
+### CodeScan's role in an edge-AI workflow
+
+CodeScan does not host an LLM itself. It is the **indexing and retrieval layer** an agent needs whenever it has to interact with a codebase:
+
+- An FTS5 + graph backend that lets a code-aware agent (e.g., Gemma 3 4B with tool-use) on an SBC sweep a local repository quickly.
+- A Cypher-like graph-query surface that an autonomous build/deploy bot can use to reason about change impact.
+- A RAG-lite component for drone or robot SDK repos — analyze offline, then feed code context into the SLM.
+
+In short — **as small models start doing real work on the edge, the *tooling* around those models has to be small, instant, and runtime-free too**. A Native AOT single binary is the most direct answer to that requirement, and CodeScan is built along that line.
+
+> For the full build/distribution spec, see [`Docs/install-distribution-strategy.md`](Docs/install-distribution-strategy.md).
 
 ## License
 

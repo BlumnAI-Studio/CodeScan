@@ -26,6 +26,38 @@ The release workflow (or a manual submission) must rewrite the following:
 | `{SHA256}`  | SHA256 of `codescan-win-x64.zip` from `checksums.txt` |
 | `ReleaseDate: 1970-01-01` | release publication date (`YYYY-MM-DD`) |
 
+## Generating a versioned manifest
+
+For every release, run the helper to substitute version + SHA256 into a new versioned manifest dir:
+
+```bash
+# from the repo root
+curl -fsSL "https://github.com/psmon/CodeScan/releases/download/v0.4.2/checksums.txt" -o /tmp/checksums.txt
+bash packaging/winget/update-manifests.sh 0.4.2 /tmp/checksums.txt 2026-05-17
+```
+
+This creates `manifests/p/psmon/CodeScan/0.4.2/` with three populated yaml files.
+
+## Validating + testing locally on Windows
+
+After generation:
+
+```powershell
+# 1) validate (no admin needed)
+winget validate --manifest packaging\winget\manifests\p\psmon\CodeScan\0.4.2
+
+# 2) one-time opt-in for installing from local manifests (admin)
+winget settings --enable LocalManifestFiles
+
+# 3) install from local manifest (normal user)
+winget install --manifest packaging\winget\manifests\p\psmon\CodeScan\0.4.2
+
+# 4) verify
+codescan --version
+```
+
+`LocalManifestFiles` is winget's safety guard against arbitrary-yaml installs. It only needs to be enabled once per machine. To disable later: `winget settings --disable LocalManifestFiles` (elevated).
+
 ## v1 submission flow (manual)
 
 1. Publish a GitHub Release (via `.github/workflows/release.yml`).
