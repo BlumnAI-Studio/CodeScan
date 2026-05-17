@@ -1,13 +1,27 @@
-/** fetch 래퍼 - 텍스트/JSON 로드와 에러 처리 */
+/** fetch 래퍼 - 텍스트/JSON 로드와 에러 처리.
+ *
+ *  Cache-busting: GitHub Pages serves static files with long cache headers, and
+ *  reverse proxies / browser caches frequently keep stale `indexes/*.json` and
+ *  `data/*.json` after a `doc-v*` redeploy. We append a per-page-load timestamp
+ *  to every fetch URL so reload always pulls fresh content; inside the same
+ *  session the timestamp stays constant so duplicate calls still hit cache.
+ */
+
+const PAGE_LOAD_ID = Date.now();
+
+function withBust(url) {
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}_t=${PAGE_LOAD_ID}`;
+}
 
 export async function fetchText(url) {
-  const res = await fetch(url);
+  const res = await fetch(withBust(url));
   if (!res.ok) throw new Error(`fetch ${url} -> ${res.status}`);
   return await res.text();
 }
 
 export async function fetchJson(url) {
-  const res = await fetch(url);
+  const res = await fetch(withBust(url));
   if (!res.ok) throw new Error(`fetch ${url} -> ${res.status}`);
   return await res.json();
 }
