@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using CodeScan.Models;
 using static CodeScan.Services.Analyzers.AnalyzerHelpers;
@@ -43,28 +44,62 @@ internal sealed partial class KotlinAnalyzer : ILanguageAnalyzer
     {
         var list = new List<SourceDependency>();
 
+        // Multi-line class header pre-pass.
+        // Kotlin headers commonly span several lines when a primary constructor
+        // is broken up, e.g.
+        //     class X private constructor(
+        //         arg: T
+        //     ) : Base(args) {
+        // We accumulate the lines until the opening brace, then extract inherits
+        // from the combined header. Every line that participated in the header
+        // is recorded so the regular walk skips `creates`/`uses_type` on them
+        // (otherwise the super-call `Base(args)` would be a false `creates`).
+        var headerLines = new HashSet<int>();
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (trimmed.Length == 0 || trimmed.StartsWith("//")) continue;
+            if (!ClassDecl().IsMatch(trimmed)) continue;
+
+            var combined = new StringBuilder();
+            var end = i;
+            for (var j = i; j < lines.Length; j++)
+            {
+                combined.Append(' ').Append(lines[j]);
+                headerLines.Add(j);
+                end = j;
+                if (lines[j].Contains('{')) break;
+            }
+
+            var header = combined.ToString();
+            var m = ClassWithBase().Match(header);
+            if (m.Success && m.Groups[1].Success && m.Groups[2].Success)
+            {
+                var className = m.Groups[1].Value;
+                foreach (var target in SplitTypeList(m.Groups[2].Value))
+                    list.Add(Dep(Language, "class", className, "inherits_or_implements", "type", target, i + 1, "class declaration"));
+            }
+
+            i = end;
+        }
+
         WalkBraceLanguage(
             lines,
             classPattern: ClassDecl(),
             isCommentLine: line => line.StartsWith("//"),
-            onClassEnter: (className, lineNumber, line) =>
-            {
-                // Kotlin: class X(arg: T) : Base(...) — consume optional primary-constructor
-                // parameter list BEFORE looking for inheritance, otherwise the first `:`
-                // would be the type annotation of a constructor parameter.
-                var m = ClassWithBase().Match(line);
-                if (!m.Success || !m.Groups[2].Success) return;
-
-                foreach (var target in SplitTypeList(m.Groups[2].Value))
-                    list.Add(Dep(Language, "class", className, "inherits_or_implements", "type", target, lineNumber, "class declaration"));
-            },
+            onClassEnter: (_, _, _) => { },
             onLine: (currentClass, lineNumber, line) =>
             {
                 if (ImportPattern().Match(line) is { Success: true } im)
                     list.Add(Dep(Language, "file", file.Name, "imports", "module", im.Groups[1].Value, lineNumber, "import"));
 
-                // Skip creates/uses on declaration lines — class/fun/object.
-                if (ClassDecl().IsMatch(line)) return;
+                // Skip every line that was part of a (possibly multi-line) class
+                // header — inherits already emitted in the pre-pass, and the
+                // super-call `Base(args)` must not be re-interpreted as creates.
+                if (headerLines.Contains(lineNumber - 1)) return;
+
+                // Skip function declarations — fun foo(x: Bar) is not a `creates Bar`.
                 if (FunctionDecl().IsMatch(line)) return;
 
                 // Kotlin has no `new` keyword: any `Type(...)` call is a construction.
@@ -86,7 +121,10 @@ internal sealed partial class KotlinAnalyzer : ILanguageAnalyzer
         return list;
     }
 
-    [GeneratedRegex(@"(?:class|interface|object|enum\s+class|data\s+class|sealed\s+class)\s+(\w+)", RegexOptions.Compiled)]
+    // Class-like declaration with optional Kotlin modifiers (abstract, open,
+    // inner, final, enum, data, sealed, value, inline, visibility). The
+    // modifiers may appear in any order before `class`/`interface`/`object`.
+    [GeneratedRegex(@"(?:(?:abstract|open|inner|final|enum|data|sealed|value|inline|private|protected|internal|public)\s+)*(?:class|interface|object)\s+(\w+)", RegexOptions.Compiled)]
     private static partial Regex ClassDecl();
 
     [GeneratedRegex(@"(?:fun|suspend\s+fun|override\s+fun|private\s+fun|internal\s+fun|protected\s+fun)\s+(?:<[^>]*>\s+)?(\w+)\s*\(", RegexOptions.Compiled)]
@@ -95,8 +133,11 @@ internal sealed partial class KotlinAnalyzer : ILanguageAnalyzer
     [GeneratedRegex(@"^\s*(?:if|else|for|while|when|catch|finally|do|try)\s*[\(\{]?", RegexOptions.Compiled)]
     private static partial Regex ControlFlow();
 
-    // Consume optional `(constructorParams)` before looking for inheritance via `:`.
-    [GeneratedRegex(@"(?:class|interface|object|enum\s+class|data\s+class|sealed\s+class)\s+(\w+)(?:\s*\([^)]*\))?(?:\s*:\s*([^{]+))?", RegexOptions.Compiled)]
+    // Same modifier prefix as ClassDecl, plus an optional visibility-qualified
+    // constructor (`private constructor`, `protected constructor`, etc.) and
+    // an optional primary-constructor parameter list, before the `:` that
+    // introduces the supertype list.
+    [GeneratedRegex(@"(?:(?:abstract|open|inner|final|enum|data|sealed|value|inline|private|protected|internal|public)\s+)*(?:class|interface|object)\s+(\w+)(?:\s+(?:private|protected|internal|public)\s+constructor)?(?:\s*\([^)]*\))?(?:\s*:\s*([^{]+))?", RegexOptions.Compiled)]
     private static partial Regex ClassWithBase();
 
     [GeneratedRegex(@"^\s*(?:fun|suspend\s+fun|override\s+fun|private\s+fun|internal\s+fun|protected\s+fun)\b", RegexOptions.Compiled)]

@@ -61,10 +61,13 @@ class Program
             "project-update" => RunProjectUpdate(commandArgs),
             "project-delete" => RunProjectDelete(commandArgs),
             "tui" => RunTui(),
+            "semantic" => RunSemantic(commandArgs),
             "help" => RunHelp(commandArgs),
             _ => UnknownCommand(command)
         };
     }
+
+    static int RunSemantic(string[] args) => new SemanticCommand().Execute(args);
 
     static int RunScan(string[] args, GlobalOptions global)
     {
@@ -569,6 +572,7 @@ class Program
           project-update <id> [opts]   Update project fields (path, addinfo, source)
           project-delete <id>          Delete a project from DB
           tui                          Interactive TUI mode
+          semantic <sub>               Compiler-backed analysis via docker (Phase 1 PoC)
           help [command]               Show help
 
         Global Options:

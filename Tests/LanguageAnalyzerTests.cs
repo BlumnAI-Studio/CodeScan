@@ -125,6 +125,83 @@ public class LanguageAnalyzerTests
         Assert.Contains("EnSpeaker", creates);
     }
 
+    // R1 — `class X private constructor(...) : Y(args)` must still emit
+    // an inherits edge to Y. Header may span multiple lines (Pekko Typed style).
+    [Fact]
+    public void Kotlin_PrivateConstructor_PreservesInheritance()
+    {
+        var file = StubFile("EnSpeakerBehavior.kt");
+        var lines = new[]
+        {
+            "package hellopekko.actors",
+            "class EnSpeakerBehavior private constructor(",
+            "    context: ActorContext<SpeakerCommand>,",
+            "    name: String",
+            ") : PersonBehavior(context, name, \"en\") {",
+            "    override fun greeting(): String = \"Hello\"",
+            "}"
+        };
+
+        var deps = new KotlinAnalyzer().ExtractDependencies(file, lines);
+        var inherits = deps.Where(d => d.EdgeKind == "inherits_or_implements"
+                                    && d.FromName == "EnSpeakerBehavior")
+                           .Select(d => d.ToName)
+                           .ToList();
+
+        Assert.Contains("PersonBehavior", inherits);
+    }
+
+    // R1 (variant) — `abstract class X protected constructor(...) : Y<T>(...)`
+    // must extract inherits and respect the modifier-prefixed class declaration.
+    [Fact]
+    public void Kotlin_AbstractClass_WithGenericBase_PreservesInheritance()
+    {
+        var file = StubFile("PersonBehavior.kt");
+        var lines = new[]
+        {
+            "abstract class PersonBehavior protected constructor(",
+            "    context: ActorContext<SpeakerCommand>,",
+            "    protected val name: String,",
+            "    protected val languageTag: String",
+            ") : AbstractBehavior<SpeakerCommand>(context) {",
+            "    protected abstract fun greeting(): String",
+            "}"
+        };
+
+        var deps = new KotlinAnalyzer().ExtractDependencies(file, lines);
+        var inherits = deps.Where(d => d.EdgeKind == "inherits_or_implements"
+                                    && d.FromName == "PersonBehavior")
+                           .Select(d => d.ToName)
+                           .ToList();
+
+        Assert.Contains("AbstractBehavior", inherits);
+    }
+
+    // R2 — super-class constructor call `: Y(args)` in the class header must
+    // NOT produce a spurious `creates` edge from the child to the parent.
+    [Fact]
+    public void Kotlin_SuperConstructorCall_IsNotCreates()
+    {
+        var file = StubFile("EnSpeakerBehavior.kt");
+        var lines = new[]
+        {
+            "class EnSpeakerBehavior private constructor(",
+            "    context: ActorContext<SpeakerCommand>,",
+            "    name: String",
+            ") : PersonBehavior(context, name, \"en\") {",
+            "    override fun greeting(): String = \"Hello\"",
+            "}"
+        };
+
+        var deps = new KotlinAnalyzer().ExtractDependencies(file, lines);
+        var creates = deps.Where(d => d.EdgeKind == "creates"
+                                   && d.FromName == "EnSpeakerBehavior")
+                          .Select(d => d.ToName)
+                          .ToList();
+
+        Assert.DoesNotContain("PersonBehavior", creates);
+    }
+
     // -------- Go — embedded struct as inheritance + no self-creates --------
 
     [Fact]

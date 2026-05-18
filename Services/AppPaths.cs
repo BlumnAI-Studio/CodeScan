@@ -12,6 +12,14 @@ public static class AppPaths
 
     public static string RunDir => Path.Combine(BaseDir, "run");
 
+    public static string SemanticDir => Path.Combine(BaseDir, "semantic");
+
+    public static string GetSemanticDir()
+    {
+        Directory.CreateDirectory(SemanticDir);
+        return SemanticDir;
+    }
+
     public static string DbPath
     {
         get

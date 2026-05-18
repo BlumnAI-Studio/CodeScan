@@ -1,3 +1,4 @@
+using CodeScan.Models;
 using CodeScan.Services;
 
 namespace CodeScan.Tests;
@@ -41,5 +42,22 @@ public class GraphQueryParserTests
     {
         Assert.Throws<GraphQueryParseException>(() =>
             GraphQueryParser.Parse("MATCH (a:class)-[r:uses_type]->(b:type) WHERE r.path CONTAINS 'x'"));
+    }
+
+    // Actor-model edges (T2): free-form EdgeKind means the parser accepts them
+    // without code change. The canonical names live in EdgeKinds.
+    [Theory]
+    [InlineData(EdgeKinds.SpawnsChild)]
+    [InlineData(EdgeKinds.ReceivesMessage)]
+    [InlineData(EdgeKinds.SendsMessageTo)]
+    [InlineData(EdgeKinds.SupervisesWith)]
+    [InlineData(EdgeKinds.ActorNamed)]
+    public void Parse_AcceptsActorModelEdgeKinds(string edge)
+    {
+        var query = GraphQueryParser.Parse($"MATCH (a:class)-[r:{edge}]->(b:type) LIMIT 5");
+
+        Assert.True(query.HasEdge);
+        Assert.Equal(edge, query.EdgeKind);
+        Assert.Equal(5, query.Limit);
     }
 }

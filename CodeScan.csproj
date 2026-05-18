@@ -29,6 +29,12 @@
         <Content Remove="TestSample\**" />
         <None Remove="TestSample\**" />
         <EmbeddedResource Remove="TestSample\**" />
+        <!-- docker/ holds container-side semantic analyzers (Phase 1+); they have
+             their own .csproj files and must not be compiled into codescan itself. -->
+        <Compile Remove="docker\**" />
+        <Content Remove="docker\**" />
+        <None Remove="docker\**" />
+        <EmbeddedResource Remove="docker\**" />
     </ItemGroup>
 
     <ItemGroup>

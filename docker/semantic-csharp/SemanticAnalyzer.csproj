@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net9.0</TargetFramework>
+        <RootNamespace>CodeScan.Semantic.CSharp</RootNamespace>
+        <AssemblyName>semantic-csharp</AssemblyName>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- Container runs the analyzer JIT'd inside the image; AOT not required. -->
+        <PublishAot>false</PublishAot>
+        <InvariantGlobalization>true</InvariantGlobalization>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.13.0" />
+        <PackageReference Include="Microsoft.Build.Locator" Version="1.7.8" />
+    </ItemGroup>
+
+</Project>
