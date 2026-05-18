@@ -52,6 +52,7 @@ public class GraphQueryParserTests
     [InlineData(EdgeKinds.SendsMessageTo)]
     [InlineData(EdgeKinds.SupervisesWith)]
     [InlineData(EdgeKinds.ActorNamed)]
+    [InlineData(EdgeKinds.Activates)]
     public void Parse_AcceptsActorModelEdgeKinds(string edge)
     {
         var query = GraphQueryParser.Parse($"MATCH (a:class)-[r:{edge}]->(b:type) LIMIT 5");

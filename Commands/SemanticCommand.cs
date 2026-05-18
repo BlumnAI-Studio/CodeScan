@@ -7,10 +7,13 @@ public sealed class SemanticCommand
 {
     private static readonly string[] SupportedLanguages =
     [
-        "csharp"
-        // Phase 2+: "typescript", "go", "python"
-        // Phase 3+: "rust", "java"
-        // Phase 4+: "cpp", "kotlin", "php"
+        "csharp",      // Phase 1   — Roslyn Workspaces (full matcher)
+        "typescript",  // Phase 2-A — ts.createProgram + TypeChecker (full matcher)
+        "kotlin",      // Phase 1-B — Kotlin Analysis API + Pekko Typed (stub, self-check only)
+        "go",          // Phase 2-B — go/packages + go/types (stub, self-check only)
+        "python"       // Phase 2-C — libcst + jedi (stub, self-check only)
+        // Phase 3+: "rust" (rust-analyzer), "java" (JDT/Spoon)
+        // Phase 4+: "cpp" (Clang LibTooling), "php" (nikic/PHP-Parser)
     ];
 
     public int Execute(string[] args)
@@ -191,12 +194,22 @@ public sealed class SemanticCommand
               analyze <language> <path>    Run semantic analysis on a project path (stdout NDJSON parsed)
               clear [language]             Drop the cache (all languages if none given)
 
-            Supported (Phase 1): csharp
-            Images:              codescan/semantic-<language>:latest
-            Cache dir:           ~/.codescan/semantic/
+            Supported:
+              csharp       Phase 1   — Roslyn Workspaces (full matcher)
+              typescript   Phase 2-A — ts.createProgram + TypeChecker (full matcher)
+              kotlin       Phase 1-B — Pekko Typed matchers planned (stub)
+              go           Phase 2-B — go/packages planned (stub)
+              python       Phase 2-C — libcst + jedi planned (stub)
 
-            Build the image locally (until ghcr publish lands):
-              docker build -t codescan/semantic-csharp:latest docker/semantic-csharp
+            Images:    codescan/semantic-<language>:latest
+            Cache dir: ~/.codescan/semantic/
+
+            Build images locally (until ghcr publish lands):
+              docker build -t codescan/semantic-csharp:latest      docker/semantic-csharp
+              docker build -t codescan/semantic-typescript:latest  docker/semantic-typescript
+              docker build -t codescan/semantic-kotlin:latest      docker/semantic-kotlin
+              docker build -t codescan/semantic-go:latest          docker/semantic-go
+              docker build -t codescan/semantic-python:latest      docker/semantic-python
             """);
     }
 }

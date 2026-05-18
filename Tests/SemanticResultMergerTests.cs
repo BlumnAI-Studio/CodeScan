@@ -55,6 +55,24 @@ public class SemanticResultMergerTests
     }
 
     [Fact]
+    public void Parse_OrleansActivatesEdge_RoundTrips()
+    {
+        // Virtual-actor edge (Orleans) is a distinct kind from spawns_child;
+        // host must preserve it for graph queries like
+        //   MATCH (a:class)-[r:activates]->(b:type) RETURN a, b
+        var ndjson = """
+            {"kind":"edge","from":{"type":"class","name":"WorldGrain"},"to":{"type":"type","name":"IEnSpeakerGrain"},"rel":"activates","line":15}
+            """;
+
+        var deps = SemanticResultMerger.Parse(ndjson);
+
+        Assert.Single(deps);
+        Assert.Equal(EdgeKinds.Activates, deps[0].EdgeKind);
+        Assert.Equal("WorldGrain", deps[0].FromName);
+        Assert.Equal("IEnSpeakerGrain", deps[0].ToName);
+    }
+
+    [Fact]
     public void Parse_MalformedLines_AreSkipped()
     {
         var ndjson = """

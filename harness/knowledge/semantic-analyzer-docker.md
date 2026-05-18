@@ -149,12 +149,20 @@ TestSample/
 - TS: generics 인스턴스화 정확한 타입
 - Java: 어노테이션 기반 빈 자동 와이어링 (`@Inject` → 의존성 엣지)
 
-## 우선순위 & 단계
+## 우선순위 & 단계 (v1.4.0 시점)
 
-1. **Phase 1 (선행)** — C# Roslyn 이미지. 자체 프로젝트(`CodeScan.csproj`)를 first target. dogfooding.
-2. **Phase 2** — TS (compilation API), Go (`go/packages`), Python (jedi). 가장 단순한 컴파일러 API.
-3. **Phase 3** — Rust (rust-analyzer), Java (JDT). 본격 의미 분석.
-4. **Phase 4** — C++, Kotlin, PHP. 복잡도 가장 큼.
+| Phase | 이미지 | 매처 | 호스트 명령 | 상태 |
+|-------|--------|------|----------|------|
+| **1** | `codescan/semantic-csharp` | Roslyn Workspaces 4.13 (`ObjectCreation`/`UsingDirective`/`BaseType`) | `codescan semantic install csharp` | ✅ **full matcher** (v1.3.0) |
+| **1-B** | `codescan/semantic-csharp` 확장 | + Akka.NET (`Props.Create<T>` / `typeof(T)` / `() => new T()`) + Orleans (`GrainFactory.GetGrain<T>`) | (동일 이미지) | ⏳ 매처 사양 작성, Roslyn 호출 분기 추가 대기 |
+| **1-B** | `codescan/semantic-kotlin` | Kotlin Analysis API + Pekko Typed (`Behavior<T>` / `context.spawn`) | `codescan semantic install kotlin` | 🟨 **stub** — Dockerfile + self-check만 (v1.4.0) |
+| **2-A** | `codescan/semantic-typescript` | `ts.createProgram` + TypeChecker (`HeritageClause` / `NewExpression` / `ImportDeclaration`) | `codescan semantic install typescript` | ✅ **full matcher** (v1.4.0) |
+| **2-B** | `codescan/semantic-go` | `go/packages` + `go/types` (`pkg.NewType()` 생성자 함수 해소) | `codescan semantic install go` | 🟨 **stub** — Dockerfile + self-check만 (v1.4.0) |
+| **2-C** | `codescan/semantic-python` | `libcst` + `jedi.Project` (cross-file 심볼 해소) | `codescan semantic install python` | 🟨 **stub** — Dockerfile + self-check만 (v1.4.0) |
+| **3** | `codescan/semantic-rust` | `rust-analyzer` JSON-RPC | — | ⏳ 미시작 |
+| **3** | `codescan/semantic-java` | Eclipse JDT 또는 Spoon (`Props.create(T.class)` 매처 포함) | — | ⏳ 미시작 |
+| **4** | `codescan/semantic-cpp` | Clang LibTooling | — | ⏳ 미시작 |
+| **4** | `codescan/semantic-php` | nikic/PHP-Parser | — | ⏳ 미시작 |
 
 각 Phase 결과는 TestSample 기준의 매트릭스로 비교 (regex vs semantic).
 

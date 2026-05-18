@@ -23,4 +23,7 @@ public static class EdgeKinds
     public const string SendsMessageTo = "sends_message_to";    // sender -> (ref, msg type)
     public const string SupervisesWith = "supervises_with";     // parent -> SupervisionStrategy
     public const string ActorNamed = "actor_named";             // actor -> logical path string
+
+    // --- virtual-actor (Orleans-style; lookup, not spawn) ---
+    public const string Activates = "activates";                // caller -> virtual-actor type via GrainFactory.GetGrain<T>
 }
