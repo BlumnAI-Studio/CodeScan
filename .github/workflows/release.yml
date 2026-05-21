@@ -280,8 +280,8 @@ jobs:
           echo "See packaging/homebrew/README.md for the documented procedure."
 
   publish-npm:
-    name: Publish @psmon/codescan-cli to npm
-    # Enabled from v0.7.2+ once @psmon/codescan-cli@0.0.0 placeholder is
+    name: Publish @webnori/codescan-cli to npm
+    # Enabled from v0.7.2+ once @webnori/codescan-cli@0.0.0 placeholder is
     # claimed on npm (manual one-time `npm publish --access public` from
     # packaging/npm/codescan-cli/) and NPM_TOKEN repo secret is set.
     needs: [resolve-version, release]

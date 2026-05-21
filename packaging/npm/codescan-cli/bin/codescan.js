@@ -13,10 +13,10 @@ const vendorBin = path.resolve(__dirname, '..', 'vendor', 'codescan',
     process.platform === 'win32' ? 'codescan.exe' : 'codescan');
 
 if (!fs.existsSync(vendorBin)) {
-    console.error('@psmon/codescan-cli: binary not found at ' + vendorBin);
-    console.error('@psmon/codescan-cli: did `npm install -g @psmon/codescan-cli` complete its postinstall step?');
-    console.error('@psmon/codescan-cli: try reinstalling, or follow the manual install:');
-    console.error('@psmon/codescan-cli:   https://github.com/psmon/CodeScan/releases/latest');
+    console.error('@webnori/codescan-cli: binary not found at ' + vendorBin);
+    console.error('@webnori/codescan-cli: did `npm install -g @webnori/codescan-cli` complete its postinstall step?');
+    console.error('@webnori/codescan-cli: try reinstalling, or follow the manual install:');
+    console.error('@webnori/codescan-cli:   https://github.com/psmon/CodeScan/releases/latest');
     process.exit(1);
 }
 
@@ -26,7 +26,7 @@ const result = spawnSync(vendorBin, process.argv.slice(2), {
 });
 
 if (result.error) {
-    console.error('@psmon/codescan-cli: failed to spawn binary:', result.error.message);
+    console.error('@webnori/codescan-cli: failed to spawn binary:', result.error.message);
     process.exit(1);
 }
 process.exit(result.status ?? 0);
