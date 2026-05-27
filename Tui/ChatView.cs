@@ -47,6 +47,7 @@ public sealed class ChatView : IAsyncDisposable
     private LlmHost? _host;
     private AgentChatLoop? _loop;
     private SqliteStore? _db;
+    private ChatSessionLogger? _logger;
 
     private enum Mode { Start, Loading, Chat }
     private Mode _mode = Mode.Start;
@@ -136,7 +137,7 @@ public sealed class ChatView : IAsyncDisposable
 
         _inputField = new TextField
         {
-            Text = " ",
+            Text = "",
             X = 1, Y = Pos.AnchorEnd(3),
             Width = Dim.Fill(15),
             Visible = false,
@@ -351,11 +352,20 @@ public sealed class ChatView : IAsyncDisposable
         try
         {
             _db = new SqliteStore(AppPaths.DbPath);
+            _logger = ChatSessionLogger.Create(_selectedModelPath, _selectedProjectRoot);
+
+            // Wire the load-progress callback so the user sees movement
+            // during the 10–30s GGUF mmap + tensor decode on CPU.
+            var progress = new Progress<float>(pct =>
+                UpdateStatus($"loading model… {pct * 100:F0}%"));
+
             _host = await Task.Run(() =>
-                LlmHost.LoadAsync(_selectedModelPath, contextSize: 4096));
+                LlmHost.LoadAsync(_selectedModelPath, contextSize: 4096, progress: progress));
             _loop = new AgentChatLoop(
                 _host,
                 new CodeScanToolbelt(_db, _selectedProjectRoot),
+                projectRoot: _selectedProjectRoot,
+                logger: _logger,
                 maxIterations: 6);
 
             AppendHistory(
@@ -363,10 +373,11 @@ public sealed class ChatView : IAsyncDisposable
                 (_selectedProjectRoot != null
                     ? $"Project context: #{_selectedProjectId} {_selectedProjectRoot}\n"
                     : "Project context: (none — only absolute paths can be read)\n") +
+                $"Chat log: {_logger.LogPath}\n" +
                 "Ask me anything about this codebase. Type a question and press Enter.\n\n");
             UpdateStatus("ready");
             _mode = Mode.Chat;
-            _inputField.Text = " ";
+            _inputField.Text = "";
             _inputField.SetFocus();
         }
         catch (Exception ex)
@@ -406,7 +417,7 @@ public sealed class ChatView : IAsyncDisposable
         _busy = true;
         _cts = new CancellationTokenSource();
         AppendHistory($"\n[You] {text}\n");
-        _inputField.Text = " ";
+        _inputField.Text = "";
         UpdateStatus("thinking…");
 
         try
@@ -417,6 +428,15 @@ public sealed class ChatView : IAsyncDisposable
                 {
                     case "thinking":
                         UpdateStatus(update.Text);
+                        break;
+                    case "progress":
+                        // Token-count heartbeats — status-line only so the
+                        // transcript stays readable.
+                        UpdateStatus(update.Text);
+                        break;
+                    case "raw":
+                        // Raw model JSON is captured in the disk log; we don't
+                        // surface it in the transcript to keep the UI clean.
                         break;
                     case "tool":
                         AppendHistory($"  → {update.Text}\n");
@@ -463,6 +483,8 @@ public sealed class ChatView : IAsyncDisposable
         if (_host != null) { await _host.DisposeAsync(); _host = null; }
         _db?.Dispose();
         _db = null;
+        _logger?.Dispose();
+        _logger = null;
         _mode = Mode.Start;
         _busy = false;
         Application.Invoke(() =>

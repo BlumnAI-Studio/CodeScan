@@ -12,6 +12,23 @@ public static class CodeScanToolGrammar
 {
     public const string DoneToolName = "done";
 
+    /// <summary>
+    /// Builds the runtime system prompt by appending a "PROJECT CONTEXT"
+    /// section to <see cref="SystemPrompt"/>. The section tells the model
+    /// whether `read_file` / `grep_file` can accept relative paths — without
+    /// it, the model emits relative paths against a (none) context and burns
+    /// turns on 404s.
+    /// </summary>
+    public static string BuildSystemPrompt(string? projectRoot)
+    {
+        var ctx = string.IsNullOrEmpty(projectRoot)
+            ? "PROJECT CONTEXT: (none). `read_file` / `grep_file` only accept ABSOLUTE paths. " +
+              "Relative paths will fail. Use `list_projects` first if the user references their codebase."
+            : $"PROJECT CONTEXT: project root = {projectRoot}. " +
+              "`read_file` / `grep_file` accept paths relative to that root (preferred) OR absolute paths.";
+        return $"{SystemPrompt}\n\n{ctx}";
+    }
+
     public const string SystemPrompt = """
 You are CodeScan's on-device code assistant. You run fully offline on the
 user's machine. The user is exploring an indexed codebase via a terminal

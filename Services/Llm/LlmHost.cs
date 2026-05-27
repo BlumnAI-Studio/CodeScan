@@ -26,6 +26,7 @@ public sealed class LlmHost : IAsyncDisposable
     public static async Task<LlmHost> LoadAsync(
         string modelPath,
         uint contextSize = 4096,
+        IProgress<float>? progress = null,
         CancellationToken ct = default)
     {
         if (!File.Exists(modelPath))
@@ -41,7 +42,7 @@ public sealed class LlmHost : IAsyncDisposable
             UseMemorymap = true,
         };
 
-        var weights = await LLamaWeights.LoadFromFileAsync(modelParams, ct);
+        var weights = await LLamaWeights.LoadFromFileAsync(modelParams, ct, progress);
         return new LlmHost(modelPath, weights, modelParams);
     }
 

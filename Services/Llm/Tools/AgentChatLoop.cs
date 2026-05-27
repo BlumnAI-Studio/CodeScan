@@ -13,7 +13,14 @@ public sealed record ToolCall(string Tool, JsonObject Args);
 public sealed record ToolTurn(ToolCall Call, string ToolResult);
 
 public sealed record ChatTurnUpdate(
-    string Phase,         // "thinking" | "tool" | "tool_result" | "done" | "error"
+    // "thinking"     — entering a turn, no token activity yet
+    // "progress"     — periodic token-count update during generation
+    // "raw"          — raw model JSON for THIS turn (always emitted before parse)
+    // "tool"         — parsed tool call about to be executed
+    // "tool_result"  — result string returned by the toolbelt (truncated)
+    // "done"         — final user-visible message from the model
+    // "error"        — fatal turn error; loop is over
+    string Phase,
     string Text);
 
 /// <summary>
@@ -38,23 +45,38 @@ public sealed class AgentChatLoop : IAsyncDisposable
     private readonly int _maxIterations;
     private readonly int _maxTokensPerTurn;
     private readonly float _temperature;
+    private readonly string _systemPrompt;
+    private readonly ChatSessionLogger? _logger;
+    private readonly int _progressTokenInterval;
 
     private bool _firstMarkerSeen;   // tracks chat-template first vs continuation
     private bool _firstUserSend = true;  // emits system prompt only on first send
     private bool _disposed;
+    private string _lastToolResult = "";
+
+    // Channel used by the generation task to push "progress" updates back
+    // into the SendAsync async iterator. Stays alive for one turn; reset on
+    // every new GenerateOneTurnAsync call.
+    private System.Threading.Channels.Channel<int>? _progressChannel;
 
     public AgentChatLoop(
         LlmHost host,
         CodeScanToolbelt toolbelt,
+        string? projectRoot = null,
+        ChatSessionLogger? logger = null,
         int maxIterations = 6,
         int maxTokensPerTurn = 512,
-        float temperature = 0.0f)
+        float temperature = 0.0f,
+        int progressTokenInterval = 32)
     {
         _host = host;
         _toolbelt = toolbelt;
+        _logger = logger;
         _maxIterations = maxIterations;
         _maxTokensPerTurn = maxTokensPerTurn;
         _temperature = temperature;
+        _progressTokenInterval = Math.Max(1, progressTokenInterval);
+        _systemPrompt = CodeScanToolGrammar.BuildSystemPrompt(projectRoot);
 
         var (weights, modelParams) = host.GetInternals();
         _context = weights.CreateContext(modelParams);
@@ -73,6 +95,8 @@ public sealed class AgentChatLoop : IAsyncDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(AgentChatLoop));
 
+        _logger?.Write("user", userMessage);
+
         for (var iter = 0; iter < _maxIterations; iter++)
         {
             ct.ThrowIfCancellationRequested();
@@ -81,38 +105,55 @@ public sealed class AgentChatLoop : IAsyncDisposable
             if (iter == 0)
             {
                 turnInput = _firstUserSend
-                    ? $"{CodeScanToolGrammar.SystemPrompt}\n\n--- USER ---\n{userMessage}"
+                    ? $"{_systemPrompt}\n\n--- USER ---\n{userMessage}"
                     : $"--- USER ---\n{userMessage}";
                 _firstUserSend = false;
             }
             else
             {
-                // continuation: previous tool result is already part of the last
-                // yielded turn; rebuild the prompt fragment here.
-                // (We don't keep a history list because the KV cache already holds
-                // it — we just need to feed THIS turn's text.)
-                turnInput = ""; // overridden below from the captured tool result
+                turnInput = $"--- TOOL RESULT ---\n{_lastToolResult}\n\n(Reply with the next single JSON tool call. Call \"done\" when satisfied.)";
             }
 
-            // For continuation turns the caller-side state is captured in
-            // _lastToolResult. We thread it through a local variable instead.
-            if (iter > 0)
-                turnInput = $"--- TOOL RESULT ---\n{_lastToolResult}\n\n(Reply with the next single JSON tool call. Call \"done\" when satisfied.)";
-
             yield return new ChatTurnUpdate("thinking", iter == 0 ? "Reading the question…" : "Reasoning…");
+
+            // Start generation and stream token-count progress alongside it.
+            // The generation task pushes ints into _progressChannel as it
+            // crosses every _progressTokenInterval-token boundary; we drain
+            // the channel in lockstep with the iterator's yields.
+            _progressChannel = System.Threading.Channels.Channel.CreateUnbounded<int>(
+                new System.Threading.Channels.UnboundedChannelOptions
+                {
+                    SingleReader = true,
+                    SingleWriter = true,
+                });
+
+            var generateTask = GenerateOneTurnAsync(turnInput, ct);
+
+            await foreach (var tokenCount in _progressChannel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+                yield return new ChatTurnUpdate("progress", $"generating… {tokenCount} tokens");
 
             string? rawJson = null;
             string? generateErr = null;
             bool cancelled = false;
-            try { rawJson = await GenerateOneTurnAsync(turnInput, ct); }
+            try { rawJson = await generateTask; }
             catch (OperationCanceledException) { cancelled = true; }
             catch (Exception ex) { generateErr = $"model error: {ex.Message}"; }
-            if (cancelled) yield break;
+            if (cancelled)
+            {
+                _logger?.Write("cancel", $"iter={iter}");
+                yield break;
+            }
             if (generateErr != null)
             {
+                _logger?.Write("error", generateErr);
                 yield return new ChatTurnUpdate("error", generateErr);
                 yield break;
             }
+
+            // Always emit + log the raw output BEFORE parsing so we keep
+            // forensic evidence even when the parse fails.
+            _logger?.Write("raw", rawJson!);
+            yield return new ChatTurnUpdate("raw", rawJson!);
 
             ToolCall? call = null;
             string? parseErr = null;
@@ -120,6 +161,7 @@ public sealed class AgentChatLoop : IAsyncDisposable
             catch (JsonException ex) { parseErr = $"model returned unparseable JSON: {ex.Message}\nraw: {Truncate(rawJson!, 200)}"; }
             if (parseErr != null)
             {
+                _logger?.Write("error", parseErr);
                 yield return new ChatTurnUpdate("error", parseErr);
                 yield break;
             }
@@ -127,7 +169,9 @@ public sealed class AgentChatLoop : IAsyncDisposable
             var c = call!;
             if (!CodeScanToolGrammar.KnownTools.Contains(c.Tool))
             {
-                yield return new ChatTurnUpdate("error", $"model called unknown tool '{c.Tool}'");
+                var err = $"model called unknown tool '{c.Tool}'";
+                _logger?.Write("error", err);
+                yield return new ChatTurnUpdate("error", err);
                 yield break;
             }
 
@@ -136,24 +180,26 @@ public sealed class AgentChatLoop : IAsyncDisposable
                 var msg = c.Args.TryGetPropertyValue("message", out var m) && m is JsonValue v
                     ? v.GetValue<string>()
                     : "(no message)";
+                _logger?.Write("done", msg);
                 yield return new ChatTurnUpdate("done", msg);
                 yield break;
             }
 
-            yield return new ChatTurnUpdate("tool",
-                $"{c.Tool}({Truncate(c.Args.ToJsonString(), 200)})");
+            var toolPreview = $"{c.Tool}({Truncate(c.Args.ToJsonString(), 200)})";
+            _logger?.Write("tool", toolPreview);
+            yield return new ChatTurnUpdate("tool", toolPreview);
 
             var toolResult = _toolbelt.Execute(c.Tool, c.Args);
             _lastToolResult = toolResult;
 
+            _logger?.Write("result", toolResult);
             yield return new ChatTurnUpdate("tool_result", Truncate(toolResult, 600));
         }
 
-        yield return new ChatTurnUpdate("error",
-            $"max iterations ({_maxIterations}) reached without 'done'");
+        var capErr = $"max iterations ({_maxIterations}) reached without 'done'";
+        _logger?.Write("error", capErr);
+        yield return new ChatTurnUpdate("error", capErr);
     }
-
-    private string _lastToolResult = "";
 
     private async Task<string> GenerateOneTurnAsync(string turnText, CancellationToken ct)
     {
@@ -173,8 +219,22 @@ public sealed class AgentChatLoop : IAsyncDisposable
         };
 
         var sb = new StringBuilder();
-        await foreach (var tok in _executor.InferAsync(prompt, inferenceParams, ct))
-            sb.Append(tok);
+        var tokensSeen = 0;
+        var channel = _progressChannel;  // local copy — gets reset per turn
+        try
+        {
+            await foreach (var tok in _executor.InferAsync(prompt, inferenceParams, ct))
+            {
+                sb.Append(tok);
+                tokensSeen++;
+                if (channel != null && tokensSeen % _progressTokenInterval == 0)
+                    channel.Writer.TryWrite(tokensSeen);
+            }
+        }
+        finally
+        {
+            channel?.Writer.TryComplete();
+        }
 
         return StripTrailingAntiPrompt(sb.ToString()).Trim();
     }
