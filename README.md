@@ -44,6 +44,19 @@ Scanning can be launched from the terminal interface with method/comment extract
 
 ![CodeScan TUI scan](Home/img/codescan-tui-scan.png)
 
+### TUI ChatMode (experimental — in development)
+
+There are environments where Claude or Codex simply isn't available — air-gapped corporate networks, security-isolated rooms, or one of the increasingly frequent outages at the major AI vendors. **Your code analysis activity shouldn't have to stop there.** TUI ChatMode runs a Gemma 4 model fully on-device, CPU-only, and drives a JSON tool-call loop against CodeScan's SQLite index. *As long as the CPU runs, you can keep asking questions about your codebase.*
+
+![CodeScan TUI ChatMode](Home/img/TUI-ChatMode.png)
+
+- **Offline by design** — no network calls. The model GGUF lives at `~/.codescan/models/`; the agent loop only touches the local index and the local filesystem.
+- **CPU-only, multi-OS** — Native AOT stays portable; no GPU, no driver, no vendor SDK required.
+- **Tool-using agent** — Gemma emits GBNF-constrained JSON every turn (`db_search` / `read_file` / `grep_file` / `list_projects` / `project_info` / `graph_query` / `done`) so the model actually reaches into the codebase instead of guessing.
+- **Forensic session log** — every chat session writes `~/.codescan/logs/chat-YYYYMMDD_HHmmss.log` with raw model output for later inspection.
+
+> Status: this surface is actively evolving alongside the on-device SLM landscape (see [Why AOT? — Edge AI trend](#why-aot--edge-ai-trend-and-the-value-of-a-single-binary) below). Expect behavior and the tool catalog to change as we learn from real sessions.
+
 ## Supported Languages
 
 | Language | Extensions | Class / Type Detection | Method Detection | Dependency Hints |
