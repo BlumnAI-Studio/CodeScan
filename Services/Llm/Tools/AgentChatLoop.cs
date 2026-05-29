@@ -49,10 +49,10 @@ public sealed class AgentChatLoop : IAsyncDisposable
     private readonly ChatSessionLogger? _logger;
     private readonly int _progressTokenInterval;
 
-    private bool _firstMarkerSeen;   // tracks chat-template first vs continuation
     private bool _firstUserSend = true;  // emits system prompt only on first send
     private bool _disposed;
     private string _lastToolResult = "";
+    private string _lastToolName = "";  // wraps the next tool_response turn for Gemma 4
 
     // Channel used by the generation task to push "progress" updates back
     // into the SendAsync async iterator. Stays alive for one turn; reset on
@@ -101,17 +101,22 @@ public sealed class AgentChatLoop : IAsyncDisposable
         {
             ct.ThrowIfCancellationRequested();
 
+            // Build the raw prompt fragment for THIS turn using Gemma 4's
+            // native markers. The first send carries the system prompt as a
+            // dedicated <|turn>system block; tool-result turns use
+            // <|tool_response>…<tool_response|> so the model parses them as
+            // structured tool replies rather than free user text.
             string turnInput;
             if (iter == 0)
             {
                 turnInput = _firstUserSend
-                    ? $"{_systemPrompt}\n\n--- USER ---\n{userMessage}"
-                    : $"--- USER ---\n{userMessage}";
+                    ? GemmaChatTemplate.FormatFirstTurn(_systemPrompt, userMessage)
+                    : GemmaChatTemplate.FormatUserTurn(userMessage);
                 _firstUserSend = false;
             }
             else
             {
-                turnInput = $"--- TOOL RESULT ---\n{_lastToolResult}\n\n(Reply with the next single JSON tool call. Call \"done\" when satisfied.)";
+                turnInput = GemmaChatTemplate.FormatToolResult(_lastToolName, _lastToolResult);
             }
 
             yield return new ChatTurnUpdate("thinking", iter == 0 ? "Reading the question…" : "Reasoning…");
@@ -155,27 +160,22 @@ public sealed class AgentChatLoop : IAsyncDisposable
             _logger?.Write("raw", rawJson!);
             yield return new ChatTurnUpdate("raw", rawJson!);
 
-            // Empty output recovery: the model occasionally returns zero
-            // tokens once the KV cache approaches the ctx limit (observed
-            // after a verbose list_projects result). Treat it as "give up
-            // gracefully" — synthesize a done message rather than breaking
-            // the loop and stranding the user. The fallback names the active
-            // context size + backend so the user knows what to bump.
+            // Empty output recovery: model emits zero tokens before the
+            // grammar accepts anything. With Gemma 4 chat-template markers
+            // applied correctly, this should be rare — when it still
+            // happens the most likely causes are now (a) tool_result payload
+            // hitting a numerical-instability edge in the Vulkan backend, or
+            // (b) prompt actually overflowed the configured ctx. Surface the
+            // diagnostic facts so the user can decide which knob to turn.
             if (string.IsNullOrWhiteSpace(rawJson))
             {
                 var ctxK = _host.ContextSize / 1024;
                 var backend = _host.GpuLayerCount > 0 ? "GPU/Vulkan" : "CPU";
-                var nextCtxHint = _host.ContextSize switch
-                {
-                    < 8192   => "→ Q로 나가서 컨텍스트를 8K로 올려 재시작하면 해결될 수 있어요.",
-                    < 16384  => "→ Q로 나가서 컨텍스트를 16K로 올려 재시작해 보세요.",
-                    < 32768  => "→ Q로 나가서 컨텍스트를 32K로 올려 재시작해 보세요.",
-                    _        => "→ 새 채팅 세션을 열거나 질문을 더 짧게 보내주세요.",
-                };
                 var fallback =
-                    $"(모델이 응답을 생성하지 못했습니다. 현재 컨텍스트 한계 {ctxK}K ({backend})에 " +
-                    $"근접한 것으로 보입니다. {nextCtxHint})";
-                _logger?.Write("done", $"(empty raw → synthesized done; ctx={_host.ContextSize}, backend={backend})");
+                    $"(모델이 빈 응답을 반환했습니다. 현재: ctx={ctxK}K, backend={backend}, iter={iter}. " +
+                    "이전 tool 결과가 너무 컸거나 채팅 템플릿/문자 인코딩 이슈일 수 있어요. " +
+                    "~/.codescan/logs/llama-native.log 의 마지막 라인을 확인하면 정확한 원인이 보입니다.)";
+                _logger?.Write("done", $"(empty raw → synthesized done; ctx={_host.ContextSize}, backend={backend}, iter={iter})");
                 yield return new ChatTurnUpdate("done", fallback);
                 yield break;
             }
@@ -216,6 +216,7 @@ public sealed class AgentChatLoop : IAsyncDisposable
 
             var toolResult = _toolbelt.Execute(c.Tool, c.Args);
             _lastToolResult = toolResult;
+            _lastToolName = c.Tool;
 
             _logger?.Write("result", toolResult);
             yield return new ChatTurnUpdate("tool_result", Truncate(toolResult, 600));
@@ -228,8 +229,10 @@ public sealed class AgentChatLoop : IAsyncDisposable
 
     private async Task<string> GenerateOneTurnAsync(string turnText, CancellationToken ct)
     {
-        var prompt = GemmaChatTemplate.Format(turnText, !_firstMarkerSeen);
-        _firstMarkerSeen = true;
+        // turnText is already wrapped in Gemma 4 turn markers by the caller
+        // (FormatFirstTurn / FormatUserTurn / FormatToolResult), so we pass
+        // it straight to the executor — no double-wrapping.
+        var prompt = turnText;
 
         var inferenceParams = new InferenceParams
         {
