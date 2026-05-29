@@ -28,9 +28,22 @@ public sealed class ChatView : IAsyncDisposable
     private readonly ListView _modelList;
     private readonly Label _modelPathLabel;
     private readonly Label _projectPathLabel;
+    private readonly Label _deviceLabel;
+    private readonly RadioGroup _deviceRadio;
+    private readonly Label _ctxLabel;
+    private readonly RadioGroup _ctxRadio;
+    private readonly Label _modelInfoLabel;
     private readonly Button _startBtn;
     private readonly Button _pickProjectBtn;
     private readonly Button _downloadBtn;
+
+    // Discovered runtime options — populated by RefreshDevices() and
+    // OnModelPicked(), consumed by StartChatAsync. Both lists are kept in
+    // lockstep with their respective RadioGroups: index 0 of _deviceRadio
+    // is always "CPU"; indices 1+ map to _devices in order.
+    private readonly List<GpuDevice> _devices = new();
+    private readonly List<int> _ctxChoiceTokens = new();  // mirrors _ctxRadio order
+    private GgufMetadata? _modelMeta;
 
     // Download screen
     private readonly Label _downloadTitleLabel;
@@ -95,7 +108,7 @@ public sealed class ChatView : IAsyncDisposable
         _modelPathLabel = new Label
         {
             Text = "Model: (none selected)",
-            X = 1, Y = 13,
+            X = 1, Y = 12,
             Width = Dim.Fill(2),
             Visible = false,
         };
@@ -103,15 +116,63 @@ public sealed class ChatView : IAsyncDisposable
         _projectPathLabel = new Label
         {
             Text = "Project context: (none — file paths will be absolute only)",
-            X = 1, Y = 14,
+            X = 1, Y = 13,
             Width = Dim.Fill(2),
+            Visible = false,
+        };
+
+        // Runtime tunables — populated dynamically. The CPU row is always
+        // present (index 0); enumerated Vulkan/WMI/nvidia-smi devices fill
+        // 1..N. Default selection prefers a discrete GPU when one exists.
+        _deviceLabel = new Label
+        {
+            Text = "Device:",
+            X = 1, Y = 15,
+            Visible = false,
+        };
+
+        _deviceRadio = new RadioGroup
+        {
+            X = 10, Y = 15,
+            Orientation = Orientation.Vertical,
+            RadioLabels = new[] { "CPU" },
+            SelectedItem = 0,
+            Visible = false,
+        };
+        _deviceRadio.SelectedItemChanged += (_, _) => RecomputeRecommendation();
+
+        // Context radio options are derived from the GGUF's trained context
+        // length — see OnModelPicked. Initial labels are a placeholder until
+        // a model is selected.
+        _ctxLabel = new Label
+        {
+            Text = "Context:",
+            X = 1, Y = 20,
+            Visible = false,
+        };
+
+        _ctxRadio = new RadioGroup
+        {
+            X = 10, Y = 20,
+            Orientation = Orientation.Horizontal,
+            RadioLabels = new[] { "4K", "8K", "16K", "32K" },
+            SelectedItem = 1,
+            Visible = false,
+        };
+
+        _modelInfoLabel = new Label
+        {
+            Text = "",
+            X = 1, Y = 22,
+            Width = Dim.Fill(2),
+            Height = 2,
             Visible = false,
         };
 
         _pickProjectBtn = new Button
         {
             Text = "[Pick Project Context]",
-            X = 1, Y = 16,
+            X = 1, Y = 25,
             Visible = false,
         };
         _pickProjectBtn.Accepting += (_, _) => PickProject();
@@ -119,7 +180,7 @@ public sealed class ChatView : IAsyncDisposable
         _startBtn = new Button
         {
             Text = ">>> Load Model & Start Chat <<<",
-            X = 26, Y = 16,
+            X = 26, Y = 25,
             Visible = false,
         };
         _startBtn.Accepting += (_, _) => _ = StartChatAsync();
@@ -127,7 +188,7 @@ public sealed class ChatView : IAsyncDisposable
         _downloadBtn = new Button
         {
             Text = "[Download Default Model (Gemma 4 E4B, ~5GB)]",
-            X = 1, Y = 18,
+            X = 1, Y = 27,
             Visible = false,
         };
         _downloadBtn.Accepting += (_, _) => _ = DownloadDefaultModelAsync();
@@ -218,7 +279,8 @@ public sealed class ChatView : IAsyncDisposable
         };
 
         root.Add(_titleLabel, _hintLabel, _modelList, _modelPathLabel,
-            _projectPathLabel, _pickProjectBtn, _startBtn, _downloadBtn,
+            _projectPathLabel, _deviceLabel, _deviceRadio, _ctxLabel, _ctxRadio,
+            _modelInfoLabel, _pickProjectBtn, _startBtn, _downloadBtn,
             _downloadTitleLabel, _downloadStatusLabel, _downloadBarLabel, _cancelDownloadBtn,
             _historyView, _statusLabel, _inputField, _sendBtn);
     }
@@ -237,7 +299,8 @@ public sealed class ChatView : IAsyncDisposable
     {
         foreach (var v in new View[]
                  { _titleLabel, _hintLabel, _modelList, _modelPathLabel,
-                   _projectPathLabel, _pickProjectBtn, _startBtn, _downloadBtn,
+                   _projectPathLabel, _deviceLabel, _deviceRadio, _ctxLabel, _ctxRadio,
+                   _modelInfoLabel, _pickProjectBtn, _startBtn, _downloadBtn,
                    _downloadTitleLabel, _downloadStatusLabel, _downloadBarLabel, _cancelDownloadBtn,
                    _historyView, _statusLabel, _inputField, _sendBtn })
         {
@@ -312,6 +375,11 @@ public sealed class ChatView : IAsyncDisposable
         _modelList.Visible = true;
         _modelPathLabel.Visible = true;
         _projectPathLabel.Visible = true;
+        _deviceLabel.Visible = true;
+        _deviceRadio.Visible = true;
+        _ctxLabel.Visible = true;
+        _ctxRadio.Visible = true;
+        _modelInfoLabel.Visible = true;
         _pickProjectBtn.Visible = true;
         _startBtn.Visible = true;
         // _downloadBtn visibility is decided by RefreshModels() based on
@@ -362,8 +430,8 @@ public sealed class ChatView : IAsyncDisposable
         else
         {
             _hintLabel.Text =
-                "Select a model with Enter, then click '>>> Load Model & Start Chat <<<'.\n" +
-                "First load takes ~10–30s on CPU (~5 GB RAM for E4B).";
+                "Select a model with Enter; pick a Device and Context; then '>>> Load Model & Start Chat <<<'.\n" +
+                "Recommended ctx is computed from the model's trained max + selected device VRAM.";
             // Default selection: first available.
             _selectedModelPath = _modelPaths[0];
             _modelPathLabel.Text = $"Model: {_selectedModelPath}";
@@ -376,6 +444,92 @@ public sealed class ChatView : IAsyncDisposable
 
         _modelList.SetSource(_modelListItems);
         _modelList.SelectedItem = 0;
+
+        // Refresh devices once when entering the screen — vulkaninfo + WMI
+        // costs ~1s in the worst case; cache for the screen lifetime.
+        RefreshDevices();
+
+        // Peek the default model's GGUF header so Context options and the
+        // recommendation are populated up front.
+        if (!string.IsNullOrEmpty(_selectedModelPath))
+            ReloadModelMetadata(_selectedModelPath);
+    }
+
+    private void RefreshDevices()
+    {
+        _devices.Clear();
+        try { _devices.AddRange(GpuEnumerator.Enumerate()); }
+        catch { /* enumeration failed — CPU still listed below */ }
+
+        var labels = new List<string> { "CPU" };
+        var defaultIdx = 0;
+        for (int i = 0; i < _devices.Count; i++)
+        {
+            var d = _devices[i];
+            var vram = d.VramBytes > 0 ? $"{d.VramBytes / (1024.0 * 1024 * 1024):F1} GB" : "?";
+            var marker = d.VulkanIndex < 0 ? " [Vulkan driver missing]" : "";
+            labels.Add($"GPU{Math.Max(d.VulkanIndex, 0)}: {d.Vendor} {Trim(d.Name, 32)} ({vram}){marker}");
+            // Prefer the first Vulkan-capable discrete device; fall back to
+            // any Vulkan-capable device; otherwise stay on CPU.
+            if (defaultIdx == 0 && d.VulkanIndex >= 0 && d.IsDiscrete) defaultIdx = i + 1;
+        }
+        if (defaultIdx == 0)
+        {
+            // No discrete — pick the first Vulkan-capable device if there is one.
+            for (int i = 0; i < _devices.Count; i++)
+                if (_devices[i].VulkanIndex >= 0) { defaultIdx = i + 1; break; }
+        }
+
+        _deviceRadio.RadioLabels = labels.ToArray();
+        _deviceRadio.SelectedItem = defaultIdx;
+    }
+
+    private void ReloadModelMetadata(string modelPath)
+    {
+        _modelMeta = GgufReader.Read(modelPath);
+
+        // Build the ctx radio options from the model's trained max.
+        var modelMax = _modelMeta?.ContextLength ?? 8192;
+        var choices = CtxRecommender.ContextChoices(modelMax);
+        _ctxChoiceTokens.Clear();
+        var labels = new string[choices.Count];
+        for (int i = 0; i < choices.Count; i++)
+        {
+            _ctxChoiceTokens.Add(choices[i].Tokens);
+            labels[i] = choices[i].Label;
+        }
+        _ctxRadio.RadioLabels = labels;
+        _ctxRadio.SelectedItem = 0;  // tentative; RecomputeRecommendation will move
+
+        RecomputeRecommendation();
+    }
+
+    private void RecomputeRecommendation()
+    {
+        if (_modelMeta == null) { _modelInfoLabel.Text = ""; return; }
+
+        var deviceIdx = _deviceRadio.SelectedItem;
+        var gpuLayers = deviceIdx > 0 ? 999 : 0;
+        var device = deviceIdx > 0 && deviceIdx - 1 < _devices.Count ? _devices[deviceIdx - 1] : null;
+
+        var rec = CtxRecommender.For(_modelMeta, device, gpuLayers);
+
+        // Move the radio selection to the recommended option (closest match).
+        var bestIdx = 0;
+        var bestDelta = int.MaxValue;
+        for (int i = 0; i < _ctxChoiceTokens.Count; i++)
+        {
+            var delta = Math.Abs(_ctxChoiceTokens[i] - rec.RecommendedCtx);
+            if (delta < bestDelta) { bestDelta = delta; bestIdx = i; }
+        }
+        _ctxRadio.SelectedItem = bestIdx;
+
+        var arch = _modelMeta.Architecture;
+        var modelMaxK = rec.ModelMaxCtx / 1024;
+        var recK = rec.RecommendedCtx / 1024;
+        _modelInfoLabel.Text =
+            $"Model: {arch} · max {modelMaxK}K · KV {FormatBytes(rec.PerTokenKvBytes)}/tok\n" +
+            $"Recommended: {recK}K — {rec.Rationale}";
     }
 
     private void OnModelPicked(object? sender, ListViewItemEventArgs e)
@@ -386,6 +540,20 @@ public sealed class ChatView : IAsyncDisposable
         if (string.IsNullOrEmpty(path)) return;
         _selectedModelPath = path;
         _modelPathLabel.Text = $"Model: {_selectedModelPath}";
+        ReloadModelMetadata(path);
+    }
+
+    private static string Trim(string s, int max) =>
+        string.IsNullOrEmpty(s) || s.Length <= max ? s : s[..(max - 1)] + "…";
+
+    private static string FormatBytes(long b)
+    {
+        if (b <= 0) return "?";
+        const double KiB = 1024, MiB = KiB * 1024, GiB = MiB * 1024;
+        if (b >= GiB) return $"{b / GiB:F1}G";
+        if (b >= MiB) return $"{b / MiB:F0}M";
+        if (b >= KiB) return $"{b / KiB:F0}K";
+        return $"{b}B";
     }
 
     private void PickProject()
@@ -429,6 +597,11 @@ public sealed class ChatView : IAsyncDisposable
         _modelList.Visible = false;
         _modelPathLabel.Visible = false;
         _projectPathLabel.Visible = false;
+        _deviceLabel.Visible = false;
+        _deviceRadio.Visible = false;
+        _ctxLabel.Visible = false;
+        _ctxRadio.Visible = false;
+        _modelInfoLabel.Visible = false;
         _pickProjectBtn.Visible = false;
         _startBtn.Visible = false;
         _downloadBtn.Visible = false;
@@ -585,14 +758,41 @@ public sealed class ChatView : IAsyncDisposable
             return;
         }
         if (_busy) return;
+
+        // Snapshot the runtime selections before the UI hides them.
+        var deviceIdx = _deviceRadio.SelectedItem;
+        var ctxIdx = _ctxRadio.SelectedItem;
+        if (ctxIdx < 0 || ctxIdx >= _ctxChoiceTokens.Count) ctxIdx = 0;
+        var ctxSize = (uint)_ctxChoiceTokens[ctxIdx];
+
+        var device = deviceIdx > 0 && deviceIdx - 1 < _devices.Count ? _devices[deviceIdx - 1] : null;
+        var gpuLayers = device != null ? 999 : 0;
+        var mainGpu = device != null ? Math.Max(0, device.VulkanIndex) : 0;
+        var backendLabel = device != null
+            ? $"GPU{Math.Max(0, device.VulkanIndex)}/{device.Vendor}/Vulkan"
+            : "CPU";
+        var ctxLabel = ctxSize >= 1024 ? $"{ctxSize / 1024}K ctx" : $"{ctxSize} ctx";
+
+        // If the user picked a non-Vulkan device, gracefully fall back to CPU
+        // and tell them why.
+        if (device != null && device.VulkanIndex < 0)
+        {
+            MessageBox.ErrorQuery("Device unavailable",
+                $"Selected device '{device.Name}' has no Vulkan driver loaded.\n" +
+                $"Install/update GPU drivers, or pick CPU / a Vulkan-capable device.",
+                "OK");
+            _busy = false;
+            return;
+        }
+
         _busy = true;
         _mode = Mode.Loading;
 
         // Switch UI immediately so the user sees status.
         ShowChat();
         _historyView.Text = "";
-        AppendHistory($"Loading model: {Path.GetFileName(_selectedModelPath)} …\n");
-        UpdateStatus("loading model (CPU init, can take 10–30s)…");
+        AppendHistory($"Loading model: {Path.GetFileName(_selectedModelPath)}  [{backendLabel}, {ctxLabel}] …\n");
+        UpdateStatus($"loading model ({backendLabel}, {ctxLabel}; first load can take 10–30s)…");
 
         try
         {
@@ -600,12 +800,16 @@ public sealed class ChatView : IAsyncDisposable
             _logger = ChatSessionLogger.Create(_selectedModelPath, _selectedProjectRoot);
 
             // Wire the load-progress callback so the user sees movement
-            // during the 10–30s GGUF mmap + tensor decode on CPU.
+            // during the 10–30s GGUF mmap + tensor decode.
             var progress = new Progress<float>(pct =>
-                UpdateStatus($"loading model… {pct * 100:F0}%"));
+                UpdateStatus($"loading model ({backendLabel}, {ctxLabel})… {pct * 100:F0}%"));
 
             _host = await Task.Run(() =>
-                LlmHost.LoadAsync(_selectedModelPath, contextSize: 4096, progress: progress));
+                LlmHost.LoadAsync(_selectedModelPath,
+                    contextSize: ctxSize,
+                    gpuLayerCount: gpuLayers,
+                    mainGpu: mainGpu,
+                    progress: progress));
             _loop = new AgentChatLoop(
                 _host,
                 new CodeScanToolbelt(_db, _selectedProjectRoot),
@@ -644,8 +848,14 @@ public sealed class ChatView : IAsyncDisposable
         _modelList.Visible = false;
         _modelPathLabel.Visible = false;
         _projectPathLabel.Visible = false;
+        _deviceLabel.Visible = false;
+        _deviceRadio.Visible = false;
+        _ctxLabel.Visible = false;
+        _ctxRadio.Visible = false;
+        _modelInfoLabel.Visible = false;
         _pickProjectBtn.Visible = false;
         _startBtn.Visible = false;
+        _downloadBtn.Visible = false;
 
         _historyView.Visible = true;
         _statusLabel.Visible = true;

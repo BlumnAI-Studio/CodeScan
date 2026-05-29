@@ -156,16 +156,26 @@ public sealed class AgentChatLoop : IAsyncDisposable
             yield return new ChatTurnUpdate("raw", rawJson!);
 
             // Empty output recovery: the model occasionally returns zero
-            // tokens once the KV cache approaches the 4096 ctx limit
-            // (observed after a verbose list_projects result). Treat it as
-            // "give up gracefully" — synthesize a done message rather than
-            // breaking the loop and stranding the user.
+            // tokens once the KV cache approaches the ctx limit (observed
+            // after a verbose list_projects result). Treat it as "give up
+            // gracefully" — synthesize a done message rather than breaking
+            // the loop and stranding the user. The fallback names the active
+            // context size + backend so the user knows what to bump.
             if (string.IsNullOrWhiteSpace(rawJson))
             {
-                const string fallback =
-                    "(모델이 응답을 생성하지 못했습니다. 컨텍스트가 한계에 가까울 수 있어요 — " +
-                    "질문을 짧게 다시 보내거나 새 채팅 세션을 열어주세요.)";
-                _logger?.Write("done", "(empty raw → synthesized done)");
+                var ctxK = _host.ContextSize / 1024;
+                var backend = _host.GpuLayerCount > 0 ? "GPU/Vulkan" : "CPU";
+                var nextCtxHint = _host.ContextSize switch
+                {
+                    < 8192   => "→ Q로 나가서 컨텍스트를 8K로 올려 재시작하면 해결될 수 있어요.",
+                    < 16384  => "→ Q로 나가서 컨텍스트를 16K로 올려 재시작해 보세요.",
+                    < 32768  => "→ Q로 나가서 컨텍스트를 32K로 올려 재시작해 보세요.",
+                    _        => "→ 새 채팅 세션을 열거나 질문을 더 짧게 보내주세요.",
+                };
+                var fallback =
+                    $"(모델이 응답을 생성하지 못했습니다. 현재 컨텍스트 한계 {ctxK}K ({backend})에 " +
+                    $"근접한 것으로 보입니다. {nextCtxHint})";
+                _logger?.Write("done", $"(empty raw → synthesized done; ctx={_host.ContextSize}, backend={backend})");
                 yield return new ChatTurnUpdate("done", fallback);
                 yield break;
             }

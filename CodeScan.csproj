@@ -46,6 +46,11 @@
              so the binary stays multi-OS without per-platform builders. -->
         <PackageReference Include="LLamaSharp" Version="0.27.0" />
         <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
+        <!-- Vulkan backend lets the TUI Chat offload Gemma layers onto any
+             discrete/integrated GPU (NVIDIA/AMD/Intel) without locking us to
+             CUDA. Mirrors AgentZeroLite's cross-vendor choice; the Cpu
+             backend stays as the fallback path when GpuLayerCount=0. -->
+        <PackageReference Include="LLamaSharp.Backend.Vulkan" Version="0.27.0" />
     </ItemGroup>
 
     <!-- ============================================================
