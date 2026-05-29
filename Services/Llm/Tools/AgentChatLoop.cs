@@ -30,17 +30,23 @@ public sealed record ChatTurnUpdate(
 ///   result fed back → repeat until `done` or iteration cap reached.
 ///
 /// GBNF sampler-level grammar guarantees structurally valid JSON every
-/// turn so the parser never has to wrestle with free prose. Across user
-/// sends within ONE <see cref="AgentChatLoop"/> instance the KV cache is
-/// preserved, so follow-up questions ("show me method X you just found")
-/// keep the previous turn's context cheaply.
+/// turn so the parser never has to wrestle with free prose.
+///
+/// Implementation note (commit history): we used to drive this with an
+/// InteractiveExecutor that retained KV cache across turns. That
+/// produced a reliable empty-raw on iter=1 whenever a tool returned a
+/// non-trivial result — the anti-prompt-driven stop dropped the closing
+/// &lt;turn|&gt; from the cached prior-turn tail, so the model saw an
+/// unfinished prior model turn and chose EOG as its first output of the
+/// next turn. The current code uses a StatelessExecutor and rebuilds
+/// the full prompt from a history list every turn, which keeps each turn
+/// boundary explicit at the cost of re-prefilling prior tokens.
 /// </summary>
 public sealed class AgentChatLoop : IAsyncDisposable
 {
     private readonly LlmHost _host;
     private readonly CodeScanToolbelt _toolbelt;
-    private readonly LLamaContext _context;
-    private readonly InteractiveExecutor _executor;
+    private readonly StatelessExecutor _executor;
     private readonly Grammar _grammar;
     private readonly int _maxIterations;
     private readonly int _maxTokensPerTurn;
@@ -49,10 +55,11 @@ public sealed class AgentChatLoop : IAsyncDisposable
     private readonly ChatSessionLogger? _logger;
     private readonly int _progressTokenInterval;
 
-    private bool _firstUserSend = true;  // emits system prompt only on first send
+    // Conversation history. Every committed user / tool_result / model
+    // turn lands here in order; the next prompt is BuildPrompt(history).
+    private readonly List<GemmaChatTemplate.HistoryEntry> _history = new();
+
     private bool _disposed;
-    private string _lastToolResult = "";
-    private string _lastToolName = "";  // wraps the next tool_response turn for Gemma 4
 
     // Channel used by the generation task to push "progress" updates back
     // into the SendAsync async iterator. Stays alive for one turn; reset on
@@ -79,8 +86,7 @@ public sealed class AgentChatLoop : IAsyncDisposable
         _systemPrompt = CodeScanToolGrammar.BuildSystemPrompt(projectRoot);
 
         var (weights, modelParams) = host.GetInternals();
-        _context = weights.CreateContext(modelParams);
-        _executor = new InteractiveExecutor(_context);
+        _executor = new StatelessExecutor(weights, modelParams);
         _grammar = new Grammar(CodeScanToolGrammar.Gbnf, CodeScanToolGrammar.GrammarRootRule);
     }
 
@@ -97,27 +103,21 @@ public sealed class AgentChatLoop : IAsyncDisposable
 
         _logger?.Write("user", userMessage);
 
+        // Commit the new user message to history once at the start of this
+        // exchange; iter>0 turns push tool results, not new user messages.
+        _history.Add(new GemmaChatTemplate.HistoryEntry(
+            GemmaChatTemplate.HistoryRole.User, userMessage));
+
         for (var iter = 0; iter < _maxIterations; iter++)
         {
             ct.ThrowIfCancellationRequested();
 
-            // Build the raw prompt fragment for THIS turn using Gemma 4's
-            // native markers. The first send carries the system prompt as a
-            // dedicated <|turn>system block; tool-result turns use
-            // <|tool_response>…<tool_response|> so the model parses them as
-            // structured tool replies rather than free user text.
-            string turnInput;
-            if (iter == 0)
-            {
-                turnInput = _firstUserSend
-                    ? GemmaChatTemplate.FormatFirstTurn(_systemPrompt, userMessage)
-                    : GemmaChatTemplate.FormatUserTurn(userMessage);
-                _firstUserSend = false;
-            }
-            else
-            {
-                turnInput = GemmaChatTemplate.FormatToolResult(_lastToolName, _lastToolResult);
-            }
+            // Build the FULL prompt every turn — history-as-source-of-truth.
+            // The stateless executor doesn't carry KV cache across calls
+            // (it re-prefills) so prior model turns must be explicit. This
+            // is what fixes the iter=1 empty-raw — every turn boundary is
+            // now closed with <turn|>, no anti-prompt stripping artifacts.
+            var turnInput = GemmaChatTemplate.BuildPrompt(_systemPrompt, _history);
 
             yield return new ChatTurnUpdate("thinking", iter == 0 ? "Reading the question…" : "Reasoning…");
 
@@ -200,6 +200,12 @@ public sealed class AgentChatLoop : IAsyncDisposable
                 yield break;
             }
 
+            // Commit THIS model turn to history before we either return
+            // (done) or feed back a tool result — keeps the next prompt's
+            // model turns closed correctly.
+            _history.Add(new GemmaChatTemplate.HistoryEntry(
+                GemmaChatTemplate.HistoryRole.Model, rawJson!));
+
             if (c.Tool == CodeScanToolGrammar.DoneToolName)
             {
                 var msg = c.Args.TryGetPropertyValue("message", out var m) && m is JsonValue v
@@ -215,8 +221,11 @@ public sealed class AgentChatLoop : IAsyncDisposable
             yield return new ChatTurnUpdate("tool", toolPreview);
 
             var toolResult = _toolbelt.Execute(c.Tool, c.Args);
-            _lastToolResult = toolResult;
-            _lastToolName = c.Tool;
+
+            // Push the tool result into history so the next iteration's
+            // BuildPrompt picks it up as a user-role turn.
+            _history.Add(new GemmaChatTemplate.HistoryEntry(
+                GemmaChatTemplate.HistoryRole.ToolResult, toolResult, c.Tool));
 
             _logger?.Write("result", toolResult);
             yield return new ChatTurnUpdate("tool_result", Truncate(toolResult, 600));
@@ -300,7 +309,9 @@ public sealed class AgentChatLoop : IAsyncDisposable
     {
         if (_disposed) return ValueTask.CompletedTask;
         _disposed = true;
-        _context.Dispose();
+        // StatelessExecutor owns no LLamaContext to dispose — it recreates
+        // the inference state on each InferAsync. Weights stay alive on the
+        // host until LlmHost itself is disposed.
         return ValueTask.CompletedTask;
     }
 }

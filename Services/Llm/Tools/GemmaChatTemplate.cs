@@ -64,4 +64,57 @@ public static class GemmaChatTemplate
         $"<|turn>user\n" +
         $"Tool result for `{toolName}`:\n{toolResultJson}<turn|>\n" +
         $"<|turn>model\n";
+
+    /// <summary>
+    /// One row in the running chat history. Used by the stateless loop to
+    /// rebuild the full prompt every turn. We capture model JSON outputs
+    /// verbatim so the model sees its own prior decisions when planning
+    /// the next move.
+    /// </summary>
+    public enum HistoryRole { User, Model, ToolResult }
+
+    public sealed record HistoryEntry(HistoryRole Role, string Content, string? ToolName = null);
+
+    /// <summary>
+    /// Builds the full prompt for a stateless executor pass. Format:
+    ///   &lt;|turn&gt;system\n{system}&lt;turn|&gt;\n
+    ///   &lt;|turn&gt;user\n{user1}&lt;turn|&gt;\n
+    ///   &lt;|turn&gt;model\n{model1}&lt;turn|&gt;\n
+    ///   &lt;|turn&gt;user\nTool result …&lt;turn|&gt;\n
+    ///   &lt;|turn&gt;model\n{model2}&lt;turn|&gt;\n
+    ///   …
+    ///   &lt;|turn&gt;model\n      ← open for the next generation
+    ///
+    /// Every prior model turn is closed with an explicit &lt;turn|&gt; so the
+    /// model doesn't see a dangling open turn (the cause of the iter=1
+    /// empty-raw seen with InteractiveExecutor: anti-prompt stripped the
+    /// closing token from KV cache, leaving the prior turn "unfinished").
+    /// </summary>
+    public static string BuildPrompt(string systemPrompt, IReadOnlyList<HistoryEntry> history)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("<|turn>system\n").Append(systemPrompt).Append("<turn|>\n");
+        foreach (var entry in history)
+        {
+            switch (entry.Role)
+            {
+                case HistoryRole.User:
+                    sb.Append("<|turn>user\n").Append(entry.Content).Append("<turn|>\n");
+                    break;
+                case HistoryRole.ToolResult:
+                    sb.Append("<|turn>user\n")
+                      .Append("Tool result for `").Append(entry.ToolName ?? "(unknown)").Append("`:\n")
+                      .Append(entry.Content)
+                      .Append("<turn|>\n");
+                    break;
+                case HistoryRole.Model:
+                    sb.Append("<|turn>model\n").Append(entry.Content).Append("<turn|>\n");
+                    break;
+            }
+        }
+        // Leave an OPEN model turn at the end so the executor continues
+        // straight into generation.
+        sb.Append("<|turn>model\n");
+        return sb.ToString();
+    }
 }
