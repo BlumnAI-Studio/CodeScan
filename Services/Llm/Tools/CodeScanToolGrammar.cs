@@ -32,14 +32,15 @@ public static class CodeScanToolGrammar
               PROJECT CONTEXT: (none) — no project root bound to this session.
 
               FILE-LOOKUP WORKFLOW for any codebase question (follow in order):
-                1) Call `db_search` with the user's query. Every hit now carries
-                   `abs_path` (absolute) and `project_root` alongside the
-                   project-relative `path`. PREFER `abs_path` — that is the
-                   field you must pass to `read_file` / `grep_file`.
-                2) If a hit has no `abs_path` (rare — stale index), call
-                   `list_projects`, pick the project whose `root_path` matches
-                   the result you want, and join: <root_path> + <relative path>.
-                3) Pass an ABSOLUTE path to `read_file` / `grep_file`. Passing
+                1) If the user's question is abstract ("layout", "architecture",
+                   "어디 있어?") and you don't know the project's folder names,
+                   call `project_tree` FIRST to see the directory map.
+                2) Call `db_search` with a single concrete keyword. Each hit
+                   carries `abs_path` (absolute) alongside the project-relative
+                   `path`. PREFER `abs_path` for read_file / grep_file.
+                3) If `db_search` returns 0 hits, recover per the SEARCH
+                   STRATEGY rules below — don't apologise to the user yet.
+                4) Pass an ABSOLUTE path to `read_file` / `grep_file`. Passing
                    the project-relative `path` field will return file-not-found
                    and waste a turn — don't do it.
               """
@@ -48,6 +49,8 @@ public static class CodeScanToolGrammar
               `read_file` / `grep_file` accept paths relative to that root
               (preferred) OR absolute paths. You may pass the `path` or
               `abs_path` field from `db_search` results directly.
+              When the user asks an abstract structural question, call
+              `project_tree` to inventory the folder layout before searching.
               """;
         return $"{ctx}\n\n{SystemPrompt}";
     }
@@ -83,6 +86,24 @@ CRITICAL OPERATING RULES:
   - Call `done` early. 1–3 tool turns is normal for code lookup; the user
     wants an answer, not a long chain of tool calls.
 
+SEARCH STRATEGY — how to pick a good db_search query:
+  - The index is FTS5 with a TRIGRAM tokenizer. Boolean keywords like
+    "OR" / "AND" are treated as literal terms and will return 0 hits.
+    Use ONE noun per query — never a phrase like "application layout".
+  - When the user asks an abstract question ("show me the app layout",
+    "어플리케이션 구조", "where are the actors?") and you don't yet know
+    the project's vocabulary, call `project_tree` FIRST. It returns the
+    folder layout with file counts; pick a real folder/file name from
+    that tree and re-run db_search with it (e.g. "MainWindow", "Actors",
+    "AgentZeroWpf").
+  - On 0 hits, do NOT immediately apologise to the user. Recover in order:
+      1) Shorter single keyword (drop adjectives, drop language prefix).
+      2) Change `type` (file → method → comment → null = any).
+      3) If still nothing, call `project_tree` to learn the codebase's
+         actual naming, then retry with a name you saw.
+  - When the user says "검색 확장해" / "broaden the search", interpret that
+    as "try project_tree + a vocab-grounded keyword", not "add OR clauses".
+
 Available tools:
   - db_search       Full-text search the local code index.
                     args: { "query": <string>,
@@ -102,6 +123,12 @@ Available tools:
                     args: { }
   - project_info    Show one project's summary (paths, addinfo, scan stats).
                     args: { "id": <int> }
+  - project_tree    Compressed directory layout (folder + file counts).
+                    Use this BEFORE db_search whenever you don't know the
+                    project's vocabulary — folder names give you keywords
+                    you can plug back into db_search.
+                    args: { "project_id": <int|omit for most-recent>,
+                            "max_depth": <int 1..5, default 3> }
   - graph_query     Run a CodeScan Cypher-like graph query (MATCH ...).
                     args: { "query": <string>, "limit": <int 1..50> }
   - done            End this exchange with a final user-facing message.
@@ -122,7 +149,7 @@ Available tools:
     public const string Gbnf = """
 root         ::= ws "{" ws "\"tool\"" ws ":" ws toolname ws "," ws "\"args\"" ws ":" ws args ws "}" ws
 
-toolname     ::= "\"db_search\"" | "\"read_file\"" | "\"grep_file\"" | "\"list_projects\"" | "\"project_info\"" | "\"graph_query\"" | "\"done\""
+toolname     ::= "\"db_search\"" | "\"read_file\"" | "\"grep_file\"" | "\"list_projects\"" | "\"project_info\"" | "\"project_tree\"" | "\"graph_query\"" | "\"done\""
 
 args         ::= "{" ws "}" | "{" ws kv (ws "," ws kv)* ws "}"
 kv           ::= string ws ":" ws value
@@ -146,6 +173,7 @@ ws           ::= ([ \t\n\r])*
         "grep_file",
         "list_projects",
         "project_info",
+        "project_tree",
         "graph_query",
         "done",
     };

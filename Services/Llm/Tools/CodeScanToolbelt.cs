@@ -39,6 +39,7 @@ public sealed class CodeScanToolbelt
                 "grep_file"     => GrepFile(args),
                 "list_projects" => ListProjects(),
                 "project_info"  => ProjectInfo(args),
+                "project_tree"  => ProjectTree(args),
                 "graph_query"   => GraphQuery(args),
                 _ => Err($"unknown tool '{toolName}'"),
             };
@@ -62,11 +63,15 @@ public sealed class CodeScanToolbelt
         var results = _db.Search(query, type, limit);
 
         // Pre-join every hit with its owning project's absolute root_path so
-        // the response carries `abs_path` directly. Without this the model has
-        // to call list_projects, eyeball which project owns the relative path,
-        // and re-issue read_file — three extra turns it kept getting wrong.
+        // each result carries `abs_path` directly. We keep `project_root` ONLY
+        // when the hits span multiple projects — duplicating the same 60-char
+        // path on every row used to push the 4096-token window out from under
+        // a follow-up turn (observed as empty raw in chat-20260529_150535.log
+        // after an 8-hit README response).
         var scanIds = results.Select(r => r.ScanId).Distinct();
         var roots = _db.GetProjectRootsByScanIds(scanIds);
+        var distinctRoots = roots.Values.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var multiProject = distinctRoots.Count > 1;
 
         var arr = new JsonArray();
         foreach (var r in results)
@@ -80,7 +85,6 @@ public sealed class CodeScanToolbelt
             };
             if (roots.TryGetValue(r.ScanId, out var root) && !string.IsNullOrEmpty(r.Path))
             {
-                obj["project_root"] = root;
                 try
                 {
                     // Build an absolute path even when the index stored a
@@ -89,6 +93,7 @@ public sealed class CodeScanToolbelt
                     obj["abs_path"] = Path.GetFullPath(Path.Combine(root, r.Path));
                 }
                 catch { /* malformed path — skip abs_path, model can fall back */ }
+                if (multiProject) obj["project_root"] = root;
             }
             arr.Add((JsonNode)obj);
         }
@@ -98,9 +103,17 @@ public sealed class CodeScanToolbelt
             ["count"] = results.Count,
             ["results"] = arr,
         };
-        // Nudge the model toward the abs_path field — without this hint Gemma
-        // still grabs `path` (the project-relative one) for read_file and 404s.
-        if (results.Count > 0 && roots.Count > 0)
+        // Single-project case: one project_root at the top, not on every hit.
+        if (!multiProject && distinctRoots.Count == 1)
+            resp["project_root"] = distinctRoots[0];
+
+        // Steer the next turn. P4: 0-hit gets a recovery strategy hint instead
+        // of the model giving up to the user. Otherwise reinforce abs_path.
+        if (results.Count == 0)
+            resp["hint"] = "0 hits. Try: (1) a SHORTER single keyword (FTS treats 'OR'/'AND' as literal terms — don't use them). " +
+                          "(2) Vary `type` (file/method/comment/doc/null). " +
+                          "(3) Call `project_tree` first to learn folder/file names, then re-query with a name you see.";
+        else if (roots.Count > 0)
             resp["hint"] = "Use the `abs_path` field of any result for read_file / grep_file. The `path` field is project-relative.";
         return resp.ToJsonString();
     }
@@ -262,6 +275,127 @@ public sealed class CodeScanToolbelt
             ["last_scanned_at"] = p.LastScannedAt,
             ["addinfo"] = p.AddInfo,
         }.ToJsonString();
+    }
+
+    // ------------------------------------------------------------------
+    // project_tree — compressed directory layout for vocabulary discovery
+    //
+    // The model can't pick a useful db_search keyword for an abstract
+    // request like "show me the app layout" if it has never seen the
+    // project's folder names. This tool answers the prerequisite question
+    // ("what directories exist?") in one turn, so a follow-up db_search
+    // can use real-world terms like "MainWindow" or "Views".
+    //
+    // Output is intentionally compact — directory paths only (no per-file
+    // listing), with each row showing the cumulative file count + top-3
+    // extensions so the model can guess what language each subtree is.
+    // ------------------------------------------------------------------
+    private const int ProjectTreeLineCap = 80;
+
+    private string ProjectTree(JsonObject args)
+    {
+        var projectId = ReadLong(args, "project_id", 0);
+        var maxDepth = Math.Clamp(ReadInt(args, "max_depth", 3), 1, 5);
+
+        // Resolve project: explicit id > captured chat context > most recent.
+        if (projectId == 0)
+        {
+            var projects = _db.GetProjects();
+            if (projects.Count == 0)
+                return Err("no indexed projects. Run 'codescan scan <path>' first.");
+            if (_projectRoot != null)
+            {
+                var match = projects.FirstOrDefault(p =>
+                    string.Equals(p.RootPath, _projectRoot, StringComparison.OrdinalIgnoreCase));
+                projectId = match?.Id ?? projects[0].Id;
+            }
+            else
+            {
+                projectId = projects[0].Id;
+            }
+        }
+
+        var project = _db.GetProject(projectId);
+        if (project == null) return Err($"project #{projectId} not found. Call list_projects to see valid ids.");
+
+        var files = _db.GetProjectFiles(projectId);
+        if (files.Count == 0)
+            return Err($"no files indexed for project #{projectId} — run 'codescan scan' first.");
+
+        // Roll up file counts and extension histograms along every parent dir
+        // in each file's path, so an intermediate directory shows the total
+        // weight of its subtree (not just leaf files).
+        var dirStats = new Dictionary<string, (int FileCount, Dictionary<string, int> Exts)>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var f in files)
+        {
+            var norm = f.RelativePath.Replace('\\', '/');
+            var parts = norm.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length <= 1) continue;  // file at project root — no dir
+
+            var ext = string.IsNullOrEmpty(f.Extension) ? "(none)" : f.Extension.TrimStart('.');
+            var pathSoFar = "";
+            for (var i = 0; i < parts.Length - 1; i++)
+            {
+                pathSoFar = i == 0 ? parts[0] : pathSoFar + "/" + parts[i];
+                var depth = i + 1;
+                if (depth > maxDepth) break;
+
+                if (!dirStats.TryGetValue(pathSoFar, out var stat))
+                {
+                    stat = (0, new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase));
+                    dirStats[pathSoFar] = stat;
+                }
+                stat.FileCount++;
+                stat.Exts[ext] = stat.Exts.TryGetValue(ext, out var v) ? v + 1 : 1;
+                dirStats[pathSoFar] = stat;
+            }
+        }
+
+        // Lexicographic order gives a stable, parent-first listing.
+        var sortedDirs = dirStats.Keys.OrderBy(d => d, StringComparer.OrdinalIgnoreCase).ToList();
+
+        var sb = new StringBuilder();
+        sb.Append(Path.GetFileName(project.RootPath.TrimEnd('\\', '/'))).Append("/\n");
+        var lines = 1;
+        var truncated = false;
+        foreach (var dir in sortedDirs)
+        {
+            if (lines >= ProjectTreeLineCap)
+            {
+                sb.Append("  … (").Append(sortedDirs.Count - (lines - 1)).Append(" more dirs hidden)\n");
+                truncated = true;
+                break;
+            }
+            var depth = dir.Split('/').Length;
+            var name = dir.Split('/').Last();
+            var stat = dirStats[dir];
+            var topExts = stat.Exts
+                .OrderByDescending(kv => kv.Value)
+                .Take(3)
+                .Select(kv => $"{kv.Key}={kv.Value}");
+            sb.Append(new string(' ', depth * 2))
+              .Append(name).Append("/  (")
+              .Append(stat.FileCount).Append(" files: ")
+              .Append(string.Join(' ', topExts))
+              .Append(")\n");
+            lines++;
+        }
+
+        var resp = new JsonObject
+        {
+            ["ok"] = true,
+            ["project_id"] = project.Id,
+            ["project_root"] = project.RootPath,
+            ["max_depth"] = maxDepth,
+            ["dir_count"] = sortedDirs.Count,
+            ["file_count"] = files.Count,
+            ["tree"] = sb.ToString(),
+        };
+        if (truncated)
+            resp["note"] = $"output capped at {ProjectTreeLineCap} dirs; pass a smaller max_depth or ask about a subtree by name in db_search.";
+        return resp.ToJsonString();
     }
 
     // ------------------------------------------------------------------
