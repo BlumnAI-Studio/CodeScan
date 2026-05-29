@@ -30,6 +30,13 @@ public sealed class ChatView : IAsyncDisposable
     private readonly Label _projectPathLabel;
     private readonly Button _startBtn;
     private readonly Button _pickProjectBtn;
+    private readonly Button _downloadBtn;
+
+    // Download screen
+    private readonly Label _downloadTitleLabel;
+    private readonly Label _downloadStatusLabel;
+    private readonly Label _downloadBarLabel;
+    private readonly Button _cancelDownloadBtn;
 
     // Chat screen
     private readonly TextView _historyView;
@@ -49,10 +56,11 @@ public sealed class ChatView : IAsyncDisposable
     private SqliteStore? _db;
     private ChatSessionLogger? _logger;
 
-    private enum Mode { Start, Loading, Chat, TearingDown }
+    private enum Mode { Start, Downloading, Loading, Chat, TearingDown }
     private Mode _mode = Mode.Start;
     private volatile bool _busy;
     private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _downloadCts;
 
     public ChatView(Toplevel root, Action onExit)
     {
@@ -116,6 +124,51 @@ public sealed class ChatView : IAsyncDisposable
         };
         _startBtn.Accepting += (_, _) => _ = StartChatAsync();
 
+        _downloadBtn = new Button
+        {
+            Text = "[Download Default Model (Gemma 4 E4B, ~5GB)]",
+            X = 1, Y = 18,
+            Visible = false,
+        };
+        _downloadBtn.Accepting += (_, _) => _ = DownloadDefaultModelAsync();
+
+        // Download screen widgets ------------------------------------------
+        _downloadTitleLabel = new Label
+        {
+            Text = "Downloading default model…",
+            X = 1, Y = 3,
+            Width = Dim.Fill(2),
+            Visible = false,
+        };
+
+        _downloadStatusLabel = new Label
+        {
+            Text = "",
+            X = 1, Y = 5,
+            Width = Dim.Fill(2),
+            Height = 3,
+            Visible = false,
+        };
+
+        _downloadBarLabel = new Label
+        {
+            Text = "",
+            X = 1, Y = 9,
+            Width = Dim.Fill(2),
+            Visible = false,
+        };
+
+        _cancelDownloadBtn = new Button
+        {
+            Text = "[Cancel Download]",
+            X = 1, Y = 11,
+            Visible = false,
+        };
+        _cancelDownloadBtn.Accepting += (_, _) =>
+        {
+            try { _downloadCts?.Cancel(); } catch { }
+        };
+
         // Chat screen widgets ----------------------------------------------
         _historyView = new TextView
         {
@@ -165,7 +218,8 @@ public sealed class ChatView : IAsyncDisposable
         };
 
         root.Add(_titleLabel, _hintLabel, _modelList, _modelPathLabel,
-            _projectPathLabel, _pickProjectBtn, _startBtn,
+            _projectPathLabel, _pickProjectBtn, _startBtn, _downloadBtn,
+            _downloadTitleLabel, _downloadStatusLabel, _downloadBarLabel, _cancelDownloadBtn,
             _historyView, _statusLabel, _inputField, _sendBtn);
     }
 
@@ -183,7 +237,8 @@ public sealed class ChatView : IAsyncDisposable
     {
         foreach (var v in new View[]
                  { _titleLabel, _hintLabel, _modelList, _modelPathLabel,
-                   _projectPathLabel, _pickProjectBtn, _startBtn,
+                   _projectPathLabel, _pickProjectBtn, _startBtn, _downloadBtn,
+                   _downloadTitleLabel, _downloadStatusLabel, _downloadBarLabel, _cancelDownloadBtn,
                    _historyView, _statusLabel, _inputField, _sendBtn })
         {
             v.Visible = false;
@@ -202,6 +257,25 @@ public sealed class ChatView : IAsyncDisposable
     {
         if (_mode == Mode.TearingDown)
             return true;  // already unloading — ignore extra Q presses
+
+        if (_mode == Mode.Downloading)
+        {
+            // Q during download = cancel. The partial file stays on disk so a
+            // later retry resumes from where we stopped.
+            try { _downloadCts?.Cancel(); } catch { }
+            return true;
+        }
+
+        // Download finished/cancelled with the post-download screen still up
+        // (waiting for the user to read the success or error message). Swap
+        // back to the model picker instead of bubbling Q to MainView.
+        if (_mode == Mode.Start && _downloadTitleLabel.Visible)
+        {
+            _cancelDownloadBtn.Text = "[Cancel Download]";
+            RefreshModels();
+            ShowStart();
+            return true;
+        }
 
         if (_busy)
         {
@@ -240,6 +314,13 @@ public sealed class ChatView : IAsyncDisposable
         _projectPathLabel.Visible = true;
         _pickProjectBtn.Visible = true;
         _startBtn.Visible = true;
+        // _downloadBtn visibility is decided by RefreshModels() based on
+        // whether the default model is already present on disk.
+
+        _downloadTitleLabel.Visible = false;
+        _downloadStatusLabel.Visible = false;
+        _downloadBarLabel.Visible = false;
+        _cancelDownloadBtn.Visible = false;
 
         _historyView.Visible = false;
         _statusLabel.Visible = false;
@@ -275,9 +356,8 @@ public sealed class ChatView : IAsyncDisposable
             _modelListItems.Add("  (no GGUF model found)");
             _modelPaths.Add("");
             _hintLabel.Text =
-                $"No model found. Download '{defaultEntry.FileName}' to:\n" +
-                $"  {ModelLocator.ModelsDir}\n" +
-                $"Source: {defaultEntry.DownloadUrl}";
+                $"No model found. Click the download button below to fetch '{defaultEntry.FileName}'\n" +
+                $"to {ModelLocator.ModelsDir}, or drop a GGUF there manually.";
         }
         else
         {
@@ -288,6 +368,11 @@ public sealed class ChatView : IAsyncDisposable
             _selectedModelPath = _modelPaths[0];
             _modelPathLabel.Text = $"Model: {_selectedModelPath}";
         }
+
+        // Surface the download button whenever the catalog default isn't
+        // already on disk. We check FindModel (not just the local dir) so the
+        // dev fallback path in ModelLocator counts as "present".
+        _downloadBtn.Visible = ModelLocator.FindModel(ChatModelCatalog.Default) == null;
 
         _modelList.SetSource(_modelListItems);
         _modelList.SelectedItem = 0;
@@ -332,6 +417,159 @@ public sealed class ChatView : IAsyncDisposable
         {
             MessageBox.ErrorQuery("Error", $"Project pick failed: {ex.Message}", "OK");
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Download default model (Gemma 4 E4B GGUF)
+    // ------------------------------------------------------------------
+    private void ShowDownloading()
+    {
+        _titleLabel.Visible = false;
+        _hintLabel.Visible = false;
+        _modelList.Visible = false;
+        _modelPathLabel.Visible = false;
+        _projectPathLabel.Visible = false;
+        _pickProjectBtn.Visible = false;
+        _startBtn.Visible = false;
+        _downloadBtn.Visible = false;
+
+        _downloadTitleLabel.Visible = true;
+        _downloadStatusLabel.Visible = true;
+        _downloadBarLabel.Visible = true;
+        _cancelDownloadBtn.Visible = true;
+
+        _cancelDownloadBtn.SetFocus();
+    }
+
+    private async Task DownloadDefaultModelAsync()
+    {
+        if (_busy || _mode == Mode.Downloading) return;
+
+        var entry = ChatModelCatalog.Default;
+        var dest = ModelLocator.TargetPath(entry);
+
+        // Sanity: if the model raced into existence (e.g. user dropped it in),
+        // skip the download entirely.
+        if (File.Exists(dest))
+        {
+            RefreshModels();
+            return;
+        }
+
+        _busy = true;
+        _mode = Mode.Downloading;
+        _downloadCts = new CancellationTokenSource();
+
+        ShowDownloading();
+        _downloadTitleLabel.Text = $"Downloading {entry.DisplayName}";
+        UpdateDownloadStatus(
+            $"Source: {entry.DownloadUrl}\n" +
+            $"Target: {dest}\n" +
+            "Preparing…");
+        _downloadBarLabel.Text = "";
+
+        var startedAt = DateTime.UtcNow;
+        var progress = new Progress<ModelDownloadProgress>(p =>
+        {
+            var pct = p.TotalBytes > 0 ? (double)p.BytesReceived / p.TotalBytes : 0.0;
+            var bar = RenderBar(pct, 40);
+            var eta = EstimateEta(p, startedAt);
+            UpdateDownloadStatus(
+                $"Source: {entry.DownloadUrl}\n" +
+                $"Target: {dest}\n" +
+                $"{FormatSize(p.BytesReceived)} / {FormatSize(p.TotalBytes)}  " +
+                $"({pct * 100:F1}%)  speed: {FormatSpeed(p.BytesPerSecond)}  ETA: {eta}");
+            UpdateDownloadBar($"  {bar}");
+        });
+
+        try
+        {
+            await Task.Run(() => ModelDownloader.DownloadAsync(
+                entry.DownloadUrl, dest, progress, _downloadCts.Token));
+
+            UpdateDownloadStatus(
+                $"Downloaded to:\n  {dest}\n" +
+                "Returning to model selection…");
+            await Task.Delay(700);
+            _mode = Mode.Start;
+            RefreshModels();
+            ShowStart();
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateDownloadStatus(
+                "Cancelled. A partial .part file was kept on disk so the next\n" +
+                "download attempt will resume from where you stopped.\n" +
+                "Press Q to go back.");
+            _mode = Mode.Start;
+            // Leave the download screen up until the user presses Q so they
+            // can read the message; HandleBack will pop back to Start.
+            _cancelDownloadBtn.Text = "[Back]";
+        }
+        catch (Exception ex)
+        {
+            UpdateDownloadStatus($"Download failed: {ex.Message}\nPress Q to go back.");
+            _mode = Mode.Start;
+            _cancelDownloadBtn.Text = "[Back]";
+        }
+        finally
+        {
+            _busy = false;
+            _downloadCts?.Dispose();
+            _downloadCts = null;
+        }
+    }
+
+    private void UpdateDownloadStatus(string text)
+    {
+        Application.Invoke(() =>
+        {
+            try { _downloadStatusLabel.Text = text; }
+            catch { /* ignore */ }
+        });
+    }
+
+    private void UpdateDownloadBar(string text)
+    {
+        Application.Invoke(() =>
+        {
+            try { _downloadBarLabel.Text = text; }
+            catch { /* ignore */ }
+        });
+    }
+
+    private static string RenderBar(double fraction, int width)
+    {
+        var clamped = Math.Clamp(fraction, 0.0, 1.0);
+        var filled = (int)Math.Round(clamped * width);
+        return "[" + new string('#', filled) + new string('.', width - filled) + "]";
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        double v = bytes;
+        string[] units = { "KB", "MB", "GB", "TB" };
+        int idx = -1;
+        do { v /= 1024.0; idx++; } while (v >= 1024 && idx < units.Length - 1);
+        return $"{v:F2} {units[idx]}";
+    }
+
+    private static string FormatSpeed(double bytesPerSecond)
+    {
+        if (bytesPerSecond <= 0) return "—";
+        return $"{FormatSize((long)bytesPerSecond)}/s";
+    }
+
+    private static string EstimateEta(ModelDownloadProgress p, DateTime startedAt)
+    {
+        if (p.BytesPerSecond <= 0 || p.TotalBytes <= 0) return "—";
+        var remaining = p.TotalBytes - p.BytesReceived;
+        if (remaining <= 0) return "0s";
+        var seconds = remaining / p.BytesPerSecond;
+        if (seconds < 60) return $"{seconds:F0}s";
+        if (seconds < 3600) return $"{seconds / 60:F0}m {seconds % 60:F0}s";
+        return $"{seconds / 3600:F0}h {(seconds % 3600) / 60:F0}m";
     }
 
     // ------------------------------------------------------------------

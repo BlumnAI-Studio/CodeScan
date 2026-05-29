@@ -19,14 +19,36 @@ public static class CodeScanToolGrammar
     /// block, so keeping the file-path constraint at the very top is the
     /// only reliable way to stop it from emitting `read_file("README.md")`
     /// when no project root is bound (which then 404s and burns turns).
+    ///
+    /// When the user hasn't bound a project root, the prompt spells out an
+    /// imperative step-by-step lookup workflow because just describing the
+    /// constraint ("only absolute paths") wasn't enough — Gemma kept passing
+    /// the relative `path` field straight from db_search into read_file.
     /// </summary>
     public static string BuildSystemPrompt(string? projectRoot)
     {
         var ctx = string.IsNullOrEmpty(projectRoot)
-            ? "PROJECT CONTEXT: (none). `read_file` / `grep_file` only accept ABSOLUTE paths. " +
-              "If the user references their codebase, call `list_projects` first and use a full root_path from the result."
-            : $"PROJECT CONTEXT: project root = {projectRoot}. " +
-              "`read_file` / `grep_file` accept paths relative to that root (preferred) OR absolute paths.";
+            ? """
+              PROJECT CONTEXT: (none) — no project root bound to this session.
+
+              FILE-LOOKUP WORKFLOW for any codebase question (follow in order):
+                1) Call `db_search` with the user's query. Every hit now carries
+                   `abs_path` (absolute) and `project_root` alongside the
+                   project-relative `path`. PREFER `abs_path` — that is the
+                   field you must pass to `read_file` / `grep_file`.
+                2) If a hit has no `abs_path` (rare — stale index), call
+                   `list_projects`, pick the project whose `root_path` matches
+                   the result you want, and join: <root_path> + <relative path>.
+                3) Pass an ABSOLUTE path to `read_file` / `grep_file`. Passing
+                   the project-relative `path` field will return file-not-found
+                   and waste a turn — don't do it.
+              """
+            : $"""
+              PROJECT CONTEXT: project root = {projectRoot}.
+              `read_file` / `grep_file` accept paths relative to that root
+              (preferred) OR absolute paths. You may pass the `path` or
+              `abs_path` field from `db_search` results directly.
+              """;
         return $"{ctx}\n\n{SystemPrompt}";
     }
 
@@ -66,11 +88,16 @@ Available tools:
                     args: { "query": <string>,
                             "type":  <"method"|"file"|"comment"|"doc"|"commit"|null>,
                             "limit": <int 1..50> }
+                    Each hit returns: { type, name, path (project-relative),
+                    abs_path (absolute — use this for read_file/grep_file),
+                    project_root, excerpt }.
   - read_file       Read a file. Provide start/end lines to read a slice.
                     args: { "path": <string>,
                             "start": <int>, "end": <int> }
+                    Use `abs_path` from db_search when PROJECT CONTEXT is (none).
   - grep_file       Regex/literal search inside one file. Returns line numbers + matches.
                     args: { "path": <string>, "pattern": <string>, "limit": <int 1..50> }
+                    Use `abs_path` from db_search when PROJECT CONTEXT is (none).
   - list_projects   List all indexed projects (id, path, file count).
                     args: { }
   - project_info    Show one project's summary (paths, addinfo, scan stats).

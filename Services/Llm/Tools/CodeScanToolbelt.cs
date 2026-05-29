@@ -60,6 +60,14 @@ public sealed class CodeScanToolbelt
         var limit = Math.Clamp(ReadInt(args, "limit", 15), 1, 50);
 
         var results = _db.Search(query, type, limit);
+
+        // Pre-join every hit with its owning project's absolute root_path so
+        // the response carries `abs_path` directly. Without this the model has
+        // to call list_projects, eyeball which project owns the relative path,
+        // and re-issue read_file — three extra turns it kept getting wrong.
+        var scanIds = results.Select(r => r.ScanId).Distinct();
+        var roots = _db.GetProjectRootsByScanIds(scanIds);
+
         var arr = new JsonArray();
         foreach (var r in results)
         {
@@ -70,14 +78,31 @@ public sealed class CodeScanToolbelt
                 ["path"] = r.Path,
                 ["excerpt"] = Truncate(r.Excerpt, 200),
             };
+            if (roots.TryGetValue(r.ScanId, out var root) && !string.IsNullOrEmpty(r.Path))
+            {
+                obj["project_root"] = root;
+                try
+                {
+                    // Build an absolute path even when the index stored a
+                    // forward-slash relative path on Linux/macOS or backslash
+                    // on Windows — Path.Combine + Path.GetFullPath normalise.
+                    obj["abs_path"] = Path.GetFullPath(Path.Combine(root, r.Path));
+                }
+                catch { /* malformed path — skip abs_path, model can fall back */ }
+            }
             arr.Add((JsonNode)obj);
         }
-        return new JsonObject
+        var resp = new JsonObject
         {
             ["ok"] = true,
             ["count"] = results.Count,
             ["results"] = arr,
-        }.ToJsonString();
+        };
+        // Nudge the model toward the abs_path field — without this hint Gemma
+        // still grabs `path` (the project-relative one) for read_file and 404s.
+        if (results.Count > 0 && roots.Count > 0)
+            resp["hint"] = "Use the `abs_path` field of any result for read_file / grep_file. The `path` field is project-relative.";
+        return resp.ToJsonString();
     }
 
     // ------------------------------------------------------------------
@@ -89,7 +114,7 @@ public sealed class CodeScanToolbelt
         if (string.IsNullOrWhiteSpace(rawPath)) return Err("path is required");
 
         var fullPath = ResolvePath(rawPath);
-        if (fullPath == null) return Err($"file not found: {rawPath}");
+        if (fullPath == null) return Err(BuildPathError("read_file", rawPath));
 
         var start = ReadInt(args, "start", 1);
         var end = ReadInt(args, "end", 0);  // 0 = read to end (capped)
@@ -132,7 +157,7 @@ public sealed class CodeScanToolbelt
         var limit = Math.Clamp(ReadInt(args, "limit", 20), 1, 50);
 
         var fullPath = ResolvePath(rawPath);
-        if (fullPath == null) return Err($"file not found: {rawPath}");
+        if (fullPath == null) return Err(BuildPathError("grep_file", rawPath));
 
         Regex regex;
         try { regex = new Regex(pattern, RegexOptions.Compiled | RegexOptions.IgnoreCase); }
@@ -289,6 +314,23 @@ public sealed class CodeScanToolbelt
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+    // Build a file-not-found error that tells the model how to recover instead
+    // of just stating the failure. Without this Gemma typically gives up with
+    // a "sorry, file not found" `done` instead of re-issuing with an absolute
+    // path — which the same DB lookup would have produced on the very next turn.
+    private string BuildPathError(string tool, string rawPath)
+    {
+        if (Path.IsPathRooted(rawPath))
+            return $"file not found: {rawPath}. Path is absolute — verify it exists, or call db_search to locate the correct file.";
+
+        if (_projectRoot == null)
+            return $"file not found: {rawPath}. PROJECT CONTEXT is (none) so '{tool}' only accepts ABSOLUTE paths. " +
+                   "Call db_search and use the `abs_path` field of a hit, or call list_projects to get a root_path and join it with the relative path.";
+
+        return $"file not found: {rawPath} (resolved against project root {_projectRoot}). " +
+               "Re-check the path via db_search, or pass an absolute path.";
+    }
+
     private string? ResolvePath(string raw)
     {
         // Absolute path: take it as-is.

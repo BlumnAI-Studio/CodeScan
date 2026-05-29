@@ -895,6 +895,32 @@ public sealed class SqliteStore : IResultStore, IDisposable
         return results;
     }
 
+    // Bulk-resolve scan_id → owning project's absolute root_path. Used by the
+    // chat toolbelt so `db_search` hits can carry an absolute path back to the
+    // model without a follow-up `list_projects` round trip.
+    public Dictionary<long, string> GetProjectRootsByScanIds(IEnumerable<long> scanIds)
+    {
+        var ids = scanIds.Where(id => id > 0).Distinct().ToList();
+        var map = new Dictionary<long, string>();
+        if (ids.Count == 0) return map;
+
+        using var cmd = _conn.CreateCommand();
+        var placeholders = string.Join(",", Enumerable.Range(0, ids.Count).Select(i => $"@id{i}"));
+        cmd.CommandText = $"""
+            SELECT s.id, p.root_path
+            FROM scans s
+            JOIN projects p ON p.id = s.project_id
+            WHERE s.id IN ({placeholders})
+            """;
+        for (int i = 0; i < ids.Count; i++)
+            cmd.Parameters.AddWithValue($"@id{i}", ids[i]);
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            map[reader.GetInt64(0)] = reader.GetString(1);
+        return map;
+    }
+
     private static string ExtractExcerpt(string content, string query, int maxLen)
     {
         if (string.IsNullOrEmpty(content)) return "";
