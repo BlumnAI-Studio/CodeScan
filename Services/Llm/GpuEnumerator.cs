@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text.RegularExpressions;
 
 namespace CodeScan.Services.Llm;
@@ -37,10 +38,32 @@ public sealed record GpuDevice(
 ///   2) WMI Win32_VideoController — Windows only, catches devices Vulkan
 ///      can't see (e.g. NVIDIA dGPU with stale driver / disabled MUX).
 ///   3) nvidia-smi — refines NVIDIA VRAM when present.
+///
+/// Caching: the full probe takes ~1–3 seconds (vulkaninfo full dump,
+/// PowerShell startup, nvidia-smi try-and-fail). Hardware doesn't sprout
+/// new GPUs mid-process, so we cache the first result for the process
+/// lifetime. <see cref="TryGetCached"/> lets callers (e.g. ChatView) check
+/// the cache without paying the probe cost, then kick the slow path onto
+/// a background task.
 /// </summary>
 public static class GpuEnumerator
 {
-    public static List<GpuDevice> Enumerate()
+    // Lazy<T> with ExecutionAndPublication guarantees the probe runs at
+    // most once even when MainView's startup prefetch and ChatView's inline
+    // call race each other. The second caller blocks on the first's Task
+    // and gets the same list back — no duplicate vulkaninfo / PowerShell
+    // subprocess work.
+    private static readonly Lazy<List<GpuDevice>> CachedProbe =
+        new(EnumerateUncached, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    public static List<GpuDevice> Enumerate() => CachedProbe.Value.ToList();
+
+    /// <summary>True only when the probe has already completed and cached
+    /// a result. Lets callers decide whether a synchronous Enumerate()
+    /// will be instant or potentially slow.</summary>
+    public static bool IsCached => CachedProbe.IsValueCreated;
+
+    private static List<GpuDevice> EnumerateUncached()
     {
         var devices = new List<GpuDevice>();
 
@@ -326,6 +349,15 @@ internal static class VulkanProbe
 
 internal sealed record WmiVideo(string Name, long AdapterRam);
 
+/// <summary>
+/// Windows-only GPU enumeration via PowerShell-fronted WMI. The caller in
+/// <see cref="GpuEnumerator.EnumerateUncached"/> runtime-guards every call
+/// site with <see cref="RuntimeInformation.IsOSPlatform(OSPlatform)"/>; the
+/// attribute below tells the Roslyn cross-platform analyzer the same thing
+/// so an accidental future caller on Linux / macOS gets a build warning
+/// instead of a runtime "powershell.exe not found".
+/// </summary>
+[SupportedOSPlatform("windows")]
 internal static class WmiProbe
 {
     /// <summary>

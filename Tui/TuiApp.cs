@@ -141,6 +141,20 @@ public class MainView : Toplevel
     {
         Title = "CodeScan TUI";
 
+        // Fire-and-forget GPU enumeration on a background thread so the
+        // first Chat-mode open finds a warm cache instead of paying the
+        // ~1–3 s probe cost (vulkaninfo full dump + PowerShell startup +
+        // nvidia-smi try) synchronously. Doing this here (not in ChatView)
+        // keeps the work off the Terminal.Gui v2 event loop entirely — an
+        // earlier attempt inside ChatView with Application.Invoke produced
+        // a TUI-corruption side-effect when the invoke raced the Chat
+        // screen transition.
+        _ = Task.Run(() =>
+        {
+            try { CodeScan.Services.Llm.GpuEnumerator.Enumerate(); }
+            catch { /* probe failure is harmless — ChatView re-tries on entry */ }
+        });
+
         // Black background + white text color scheme
         var darkScheme = new ColorScheme
         {
