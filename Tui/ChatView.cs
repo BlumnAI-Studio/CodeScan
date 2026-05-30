@@ -47,6 +47,12 @@ public sealed class ChatView : IAsyncDisposable
     private readonly List<int> _ctxChoiceTokens = new();  // mirrors _ctxRadio order
     private GgufMetadata? _modelMeta;
 
+    // Last tool name seen in the chat-update stream, so the matching
+    // tool_result line can label its summary correctly. AgentChatLoop emits
+    // tool → tool_result alternately within a turn so a single slot is
+    // enough.
+    private string _lastUiToolName = "";
+
     // Maps _responseRadio.SelectedItem → AgentChatLoop.maxTokensPerTurn.
     // Capped at 4096 so a runaway model can't burn its entire ctx window
     // in one turn; the user can raise this with a fresh ChatView.
@@ -594,6 +600,137 @@ public sealed class ChatView : IAsyncDisposable
     private static string Trim(string s, int max) =>
         string.IsNullOrEmpty(s) || s.Length <= max ? s : s[..(max - 1)] + "…";
 
+    // ------------------------------------------------------------------
+    // Friendly tool-call / tool-result rendering
+    //
+    // The AgentChatLoop emits raw JSON in the "tool" and "tool_result"
+    // phases because the disk log (~/.codescan/logs/chat-*.log) is the
+    // forensic source of truth. The chat transcript view, by contrast,
+    // should keep noise out of the user's way — they're trying to follow
+    // the agent's chain of reasoning, not parse JSON in their head.
+    //
+    // Each formatter parses just enough of the payload to surface the one
+    // or two fields that matter for that tool. Anything unparseable falls
+    // back to the raw text so we never silently hide an actual failure.
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Pulls "toolName({...args...})" apart and returns the tool name
+    /// plus a one-line Korean summary of the call.
+    /// </summary>
+    private static (string ToolName, string Brief) FormatToolCall(string raw)
+    {
+        var paren = raw.IndexOf('(');
+        if (paren <= 0 || !raw.EndsWith(")")) return (raw, raw);
+
+        var tool = raw[..paren];
+        var argsText = raw[(paren + 1)..^1];
+
+        System.Text.Json.Nodes.JsonObject? args = null;
+        try { args = System.Text.Json.Nodes.JsonNode.Parse(argsText)?.AsObject(); }
+        catch { /* malformed args fall back to the raw form below */ }
+
+        string brief = (tool, args) switch
+        {
+            ("db_search", { } a) =>
+                $"검색: \"{Trim(StrArg(a, "query"), 40)}\"" +
+                (StrArg(a, "type") is { Length: > 0 } t ? $" (type={t})" : ""),
+            ("project_tree", { } a) =>
+                $"프로젝트 트리 (depth={StrArg(a, "max_depth", "3")})",
+            ("read_file", { } a) =>
+                $"읽기: {ShortPath(StrArg(a, "path"))} ({StrArg(a, "start", "1")}~{StrArg(a, "end", "?")})",
+            ("grep_file", { } a) =>
+                $"grep: \"{Trim(StrArg(a, "pattern"), 30)}\" in {ShortPath(StrArg(a, "path"))}",
+            ("list_projects", _) => "프로젝트 목록 조회",
+            ("project_info", { } a) =>
+                $"프로젝트 정보 (#{StrArg(a, "id", "?")})",
+            ("graph_query", { } a) =>
+                $"그래프 쿼리: {Trim(StrArg(a, "query"), 40)}",
+            ("done", _) => "최종 응답",
+            _ => $"{tool}({Trim(argsText, 60)})",
+        };
+        return (tool, brief);
+    }
+
+    /// <summary>
+    /// Compresses the tool's JSON result into a "✓ N hits" style line.
+    /// Returns "실패: ..." when the tool reported ok=false so the user
+    /// sees the failure inline instead of just a silent next-turn.
+    /// </summary>
+    private static string FormatToolResult(string toolName, string resultJson)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(resultJson);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("ok", out var ok)
+                && ok.ValueKind == System.Text.Json.JsonValueKind.False)
+            {
+                var err = root.TryGetProperty("error", out var e) ? e.GetString() : "(no message)";
+                return $"✗ 실패: {Trim(err ?? "", 80)}";
+            }
+
+            return toolName switch
+            {
+                "db_search" =>
+                    $"✓ {IntArg(root, "count")} hits",
+                "project_tree" =>
+                    $"✓ {IntArg(root, "dir_count")} dirs / {IntArg(root, "file_count")} files",
+                "read_file" =>
+                    FormatReadFileSummary(root),
+                "grep_file" =>
+                    $"✓ {IntArg(root, "count")} matches",
+                "list_projects" =>
+                    $"✓ {IntArg(root, "total")} projects ({IntArg(root, "shown")} shown)",
+                "project_info" =>
+                    $"✓ 프로젝트 #{IntArg(root, "id")}",
+                "graph_query" =>
+                    $"✓ {IntArg(root, "node_count")} nodes / {IntArg(root, "edge_count")} edges",
+                _ => "✓ 완료",
+            };
+        }
+        catch
+        {
+            return "✓";
+        }
+    }
+
+    private static string FormatReadFileSummary(System.Text.Json.JsonElement root)
+    {
+        var start = IntArg(root, "start");
+        var end = IntArg(root, "end");
+        var total = IntArg(root, "total_lines");
+        var lines = Math.Max(0, end - start + 1);
+        return total > 0
+            ? $"✓ {lines}줄 ({start}~{end} / 총 {total}줄)"
+            : $"✓ {lines}줄";
+    }
+
+    private static string ShortPath(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return "?";
+        var sep = Math.Max(path.LastIndexOf('/'), path.LastIndexOf('\\'));
+        return sep >= 0 && sep < path.Length - 1 ? path[(sep + 1)..] : path;
+    }
+
+    private static string StrArg(System.Text.Json.Nodes.JsonObject args, string key, string fallback = "")
+    {
+        if (!args.TryGetPropertyValue(key, out var v) || v is null) return fallback;
+        if (v is System.Text.Json.Nodes.JsonValue jv)
+        {
+            if (jv.TryGetValue<string>(out var s) && !string.IsNullOrEmpty(s)) return s;
+            return jv.ToString();
+        }
+        return v.ToString();
+    }
+
+    private static int IntArg(System.Text.Json.JsonElement obj, string key)
+    {
+        if (!obj.TryGetProperty(key, out var v)) return 0;
+        return v.ValueKind == System.Text.Json.JsonValueKind.Number && v.TryGetInt32(out var i) ? i : 0;
+    }
+
     private static string FormatBytes(long b)
     {
         if (b <= 0) return "?";
@@ -951,13 +1088,20 @@ public sealed class ChatView : IAsyncDisposable
                         // surface it in the transcript to keep the UI clean.
                         break;
                     case "tool":
-                        AppendHistory($"  → {update.Text}\n");
-                        UpdateStatus($"running tool: {update.Text}");
+                    {
+                        var (toolName, brief) = FormatToolCall(update.Text);
+                        _lastUiToolName = toolName;
+                        AppendHistory($"  → [CodeScan] {brief}\n");
+                        UpdateStatus($"running: {toolName}");
                         break;
+                    }
                     case "tool_result":
-                        AppendHistory($"  ← {update.Text}\n");
+                    {
+                        var summary = FormatToolResult(_lastUiToolName, update.Text);
+                        AppendHistory($"  ← {summary}\n");
                         UpdateStatus("reasoning…");
                         break;
+                    }
                     case "done":
                         AppendHistory($"\n[Gemma] {update.Text}\n");
                         UpdateStatus("ready");
