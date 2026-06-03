@@ -31,6 +31,18 @@ const TABS = {
 
 const STATE = { tab: 'core', current: { core: null, task: null } };
 
+// Narrow viewports cannot display a left-to-right mermaid graph without
+// horizontal overflow; swap the direction header so the diagram lays out
+// top-to-bottom instead. Applied only on mobile; desktop keeps LR.
+const MOBILE_QUERY = '(max-width: 768px)';
+function isMobile() {
+  return typeof window.matchMedia === 'function' && window.matchMedia(MOBILE_QUERY).matches;
+}
+function maybeMobileMermaid(src) {
+  if (!src || !isMobile()) return src;
+  return src.replace(/^(\s*(?:flowchart|graph)\s+)(LR|RL)\b/i, '$1TB');
+}
+
 export async function render(ctx) {
   const { viewEl, topbarEl, params } = ctx;
 
@@ -75,9 +87,9 @@ function drawCore(viewEl, data) {
     return;
   }
 
-  const cont = h('div', { style: { display: 'grid', gridTemplateColumns: '260px 1fr', gap: '16px', alignItems: 'start' } });
-  const listPane = h('div', { class: 'tree' });
-  const detailPane = h('div');
+  const cont = h('div', { class: 'wf-layout' });
+  const listPane = h('div', { class: 'tree wf-list' });
+  const detailPane = h('div', { class: 'wf-detail' });
   cont.append(listPane, detailPane);
   mount(viewEl, cont);
 
@@ -100,7 +112,7 @@ function drawCore(viewEl, data) {
       h('h2', {}, wf.label),
       h('p', {}, wf.description),
       h('div', { class: 'wf-flow-label' }, 'High-level flow'),
-      h('div', { class: 'mermaid', html: wf.mermaid }),
+      h('div', { class: 'mermaid', html: maybeMobileMermaid(wf.mermaid) }),
     ];
     if (wf.sourceMermaid) {
       children.push(h('div', { class: 'wf-source-panel' }, [
@@ -108,7 +120,7 @@ function drawCore(viewEl, data) {
           h('span', { class: 'wf-source-title' }, 'Source files & classes'),
           h('span', { class: 'wf-source-sub' }, 'in-repo references — open by Ctrl+click in your IDE'),
         ]),
-        h('div', { class: 'mermaid', html: wf.sourceMermaid }),
+        h('div', { class: 'mermaid', html: maybeMobileMermaid(wf.sourceMermaid) }),
       ]));
     }
     const box = h('div', { class: 'md-viewer' }, children);
@@ -129,9 +141,9 @@ function drawTask(viewEl, engineIdx) {
     return;
   }
 
-  const cont = h('div', { style: { display: 'grid', gridTemplateColumns: '260px 1fr', gap: '16px', alignItems: 'start' } });
-  const listPane = h('div', { class: 'tree' });
-  const detailPane = h('div');
+  const cont = h('div', { class: 'wf-layout' });
+  const listPane = h('div', { class: 'tree wf-list' });
+  const detailPane = h('div', { class: 'wf-detail' });
   cont.append(listPane, detailPane);
   mount(viewEl, cont);
 

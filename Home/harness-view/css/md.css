@@ -48,6 +48,28 @@
   padding: 16px; margin: 12px 0; text-align: center;
   overflow: auto;
 }
+/* Mermaid renders SVG with a fixed max-width derived from the diagram's
+   intrinsic size. On narrow viewports the SVG still overflows the
+   container, so override here and let it scale down. height:auto keeps
+   the aspect ratio so labels remain legible. */
+.md-viewer .mermaid svg {
+  max-width: 100% !important;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Mobile — tighten the md-viewer chrome so content has more horizontal
+   room and the page never overflows the viewport. */
+@media (max-width: 768px) {
+  .md-viewer {
+    padding: 18px 14px;
+    border-radius: 10px;
+  }
+  .md-viewer h1 { font-size: 22px; }
+  .md-viewer h2 { font-size: 18px; }
+  .md-viewer .mermaid { padding: 10px 6px; }
+}
 
 /* MD edit mode */
 .md-editor {
