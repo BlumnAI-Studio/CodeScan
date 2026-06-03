@@ -25,7 +25,7 @@
       "date": "2026-05-19",
       "time": "08:00",
       "title": "graph edit cli foundation",
-      "size": 6896
+      "size": 7024
     },
     {
       "category": "semantic-bridge-architect",
@@ -33,7 +33,7 @@
       "date": "2026-05-18",
       "time": "15:30",
       "title": "phase2 foundation",
-      "size": 7379
+      "size": 7540
     },
     {
       "category": "actor-toolkit-scout",
@@ -41,7 +41,7 @@
       "date": "2026-05-18",
       "time": "15:00",
       "title": "orleans fixture",
-      "size": 5939
+      "size": 6047
     },
     {
       "category": "semantic-bridge-architect",
@@ -49,7 +49,7 @@
       "date": "2026-05-18",
       "time": "13:00",
       "title": "roslyn phase1 foundation",
-      "size": 6697
+      "size": 6832
     },
     {
       "category": "actor-graph-extension",
@@ -57,7 +57,7 @@
       "date": "2026-05-18",
       "time": "12:31",
       "title": "after r1 r2 baseline",
-      "size": 7326
+      "size": 7459
     },
     {
       "category": "test-audit",
@@ -65,7 +65,7 @@
       "date": "2026-05-18",
       "time": "12:30",
       "title": "baseline after r1 r2",
-      "size": 4783
+      "size": 4901
     },
     {
       "category": "tamer",
@@ -73,7 +73,7 @@
       "date": "2026-05-18",
       "time": "12:00",
       "title": "residual improvements audit",
-      "size": 10406
+      "size": 10601
     },
     {
       "category": "tamer",
@@ -81,7 +81,7 @@
       "date": "2026-05-18",
       "time": "01:16",
       "title": "add language and actor experts",
-      "size": 3482
+      "size": 3555
     },
     {
       "category": "test-sentinel",
@@ -89,7 +89,7 @@
       "date": "2026-05-18",
       "time": "01:04",
       "title": "actor hierarchy cross toolkit",
-      "size": 9492
+      "size": 9679
     },
     {
       "category": "test-sentinel",
@@ -97,7 +97,7 @@
       "date": "2026-05-18",
       "time": "00:53",
       "title": "akka actor hierarchy fixture",
-      "size": 8408
+      "size": 8558
     },
     {
       "category": "test-sentinel",
@@ -105,7 +105,7 @@
       "date": "2026-05-18",
       "time": "00:42",
       "title": "language analyzer refactor",
-      "size": 6875
+      "size": 7021
     },
     {
       "category": "test-sentinel",
@@ -113,7 +113,7 @@
       "date": "2026-05-18",
       "time": "00:16",
       "title": "multilang sample e2e",
-      "size": 8246
+      "size": 8410
     },
     {
       "category": "tamer",
@@ -121,7 +121,7 @@
       "date": "2026-05-17",
       "time": "14:00",
       "title": "implement install distribution",
-      "size": 4862
+      "size": 4952
     },
     {
       "category": "tamer",
@@ -129,7 +129,7 @@
       "date": "2026-05-17",
       "time": "12:00",
       "title": "add initial experts",
-      "size": 1795
+      "size": 1845
     }
   ]
 }

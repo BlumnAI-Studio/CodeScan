@@ -7,8 +7,8 @@
       "title": "v1.5.0",
       "heading": "graph-curator 합류 + `codescan graph-edit` CLI",
       "path": "v1.5.0.md",
-      "size": 5696,
-      "modified": "2026-05-18",
+      "size": 5827,
+      "modified": "2026-05-28",
       "author": "psmon",
       "committed": "2026-05-19"
     },
@@ -17,8 +17,8 @@
       "title": "v1.4.0",
       "heading": "잔여 개선건 P2+P3 일괄 진행",
       "path": "v1.4.0.md",
-      "size": 6801,
-      "modified": "2026-05-18",
+      "size": 6964,
+      "modified": "2026-05-28",
       "author": "psmon",
       "committed": "2026-05-18"
     },
@@ -27,8 +27,8 @@
       "title": "v1.3.0",
       "heading": "잔여 개선건 P0+P1 일괄 진행",
       "path": "v1.3.0.md",
-      "size": 6093,
-      "modified": "2026-05-18",
+      "size": 6225,
+      "modified": "2026-05-28",
       "author": "psmon",
       "committed": "2026-05-18"
     },
@@ -37,8 +37,8 @@
       "title": "v1.2.0",
       "heading": "Harness v1.2.0 — 다국어 + 액터 전문가 합류",
       "path": "v1.2.0.md",
-      "size": 3518,
-      "modified": "2026-05-17",
+      "size": 3609,
+      "modified": "2026-05-28",
       "author": "psmon",
       "committed": "2026-05-18"
     },
@@ -47,8 +47,8 @@
       "title": "v1.1.0",
       "heading": "초기 전문가 3명 투입",
       "path": "v1.1.0.md",
-      "size": 1588,
-      "modified": "2026-05-17",
+      "size": 1634,
+      "modified": "2026-05-28",
       "author": "psmon",
       "committed": "2026-05-17"
     },
@@ -58,7 +58,7 @@
       "heading": "Harness — 정원",
       "path": "README.md",
       "size": 1287,
-      "modified": "2026-05-17",
+      "modified": "2026-05-28",
       "author": "psmon",
       "committed": "2026-05-17"
     }
@@ -66,49 +66,74 @@
   "contributors": [
     {
       "name": "psmon",
-      "commits": 15,
-      "percent": 100
+      "commits": 16,
+      "percent": 76.2
+    },
+    {
+      "name": "smpark-luna",
+      "commits": 3,
+      "percent": 14.3
+    },
+    {
+      "name": "smpark",
+      "commits": 2,
+      "percent": 9.5
     }
   ],
   "contributorsAll": [
     {
       "name": "psmon",
-      "commits": 15,
-      "percent": 100
+      "commits": 16,
+      "percent": 76.2
+    },
+    {
+      "name": "smpark-luna",
+      "commits": 3,
+      "percent": 14.3
+    },
+    {
+      "name": "smpark",
+      "commits": 2,
+      "percent": 9.5
     }
   ],
   "contributorsRecent": [
     {
-      "name": "psmon",
-      "commits": 15,
-      "percent": 100
+      "name": "smpark-luna",
+      "commits": 3,
+      "percent": 60
+    },
+    {
+      "name": "smpark",
+      "commits": 2,
+      "percent": 40
     }
   ],
   "contributorsWindowDays": 14,
   "commitStats": {
-    "totalAllTime": 15,
-    "last7d": 15,
-    "last30d": 15
+    "totalAllTime": 21,
+    "last7d": 3,
+    "last30d": 21
   },
   "topChangedFiles": [
+    {
+      "path": "Docs/install-distribution-strategy.md",
+      "commits": 7
+    },
+    {
+      "path": "Home/harness-view/data/workflow-graph.json",
+      "commits": 6
+    },
     {
       "path": "harness/harness.config.json",
       "commits": 5
     },
     {
-      "path": "Docs/install-distribution-strategy.md",
+      "path": "Home/harness-view/data/pdsa-insight.json",
       "commits": 4
     },
     {
-      "path": "Home/harness-view/data/pdsa-insight.json",
-      "commits": 3
-    },
-    {
       "path": "harness/knowledge/actor-model-cross-toolkit.md",
-      "commits": 2
-    },
-    {
-      "path": "harness/knowledge/semantic-analyzer-docker.md",
       "commits": 2
     }
   ]

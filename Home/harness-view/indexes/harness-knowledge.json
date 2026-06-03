@@ -7,8 +7,8 @@
       "name": "actor-model-cross-toolkit.md",
       "title": "actor-model-cross-toolkit",
       "heading": "Actor Model — Cross-Toolkit Knowledge",
-      "size": 10493,
-      "modified": "2026-05-18"
+      "size": 10659,
+      "modified": "2026-05-28"
     },
     {
       "id": "harness/knowledge/aot-rules.md",
@@ -16,8 +16,8 @@
       "name": "aot-rules.md",
       "title": "aot-rules",
       "heading": "AOT 규칙 (CodeScan)",
-      "size": 2149,
-      "modified": "2026-05-17"
+      "size": 2209,
+      "modified": "2026-05-28"
     },
     {
       "id": "harness/knowledge/graph-curation-guide.md",
@@ -25,8 +25,8 @@
       "name": "graph-curation-guide.md",
       "title": "graph-curation-guide",
       "heading": "Graph Curation Guide",
-      "size": 6238,
-      "modified": "2026-05-18"
+      "size": 6362,
+      "modified": "2026-05-28"
     },
     {
       "id": "harness/knowledge/language-analyzer-patterns.md",
@@ -34,8 +34,8 @@
       "name": "language-analyzer-patterns.md",
       "title": "language-analyzer-patterns",
       "heading": "Language Analyzer Patterns — Regex Catalog & Limits",
-      "size": 6215,
-      "modified": "2026-05-17"
+      "size": 6318,
+      "modified": "2026-05-28"
     },
     {
       "id": "harness/knowledge/regex-patterns.md",
@@ -43,8 +43,8 @@
       "name": "regex-patterns.md",
       "title": "regex-patterns",
       "heading": "정규식 패턴 가이드 (CodeScan)",
-      "size": 2695,
-      "modified": "2026-05-17"
+      "size": 2760,
+      "modified": "2026-05-28"
     },
     {
       "id": "harness/knowledge/semantic-analyzer-docker.md",
@@ -52,8 +52,8 @@
       "name": "semantic-analyzer-docker.md",
       "title": "semantic-analyzer-docker",
       "heading": "Semantic Analyzer Docker Plan",
-      "size": 11451,
-      "modified": "2026-05-18"
+      "size": 11649,
+      "modified": "2026-05-28"
     }
   ],
   "tree": [
@@ -61,43 +61,43 @@
       "type": "file",
       "name": "actor-model-cross-toolkit.md",
       "path": "actor-model-cross-toolkit.md",
-      "size": 10493,
-      "modified": "2026-05-18"
+      "size": 10659,
+      "modified": "2026-05-28"
     },
     {
       "type": "file",
       "name": "aot-rules.md",
       "path": "aot-rules.md",
-      "size": 2149,
-      "modified": "2026-05-17"
+      "size": 2209,
+      "modified": "2026-05-28"
     },
     {
       "type": "file",
       "name": "graph-curation-guide.md",
       "path": "graph-curation-guide.md",
-      "size": 6238,
-      "modified": "2026-05-18"
+      "size": 6362,
+      "modified": "2026-05-28"
     },
     {
       "type": "file",
       "name": "language-analyzer-patterns.md",
       "path": "language-analyzer-patterns.md",
-      "size": 6215,
-      "modified": "2026-05-17"
+      "size": 6318,
+      "modified": "2026-05-28"
     },
     {
       "type": "file",
       "name": "regex-patterns.md",
       "path": "regex-patterns.md",
-      "size": 2695,
-      "modified": "2026-05-17"
+      "size": 2760,
+      "modified": "2026-05-28"
     },
     {
       "type": "file",
       "name": "semantic-analyzer-docker.md",
       "path": "semantic-analyzer-docker.md",
-      "size": 11451,
-      "modified": "2026-05-18"
+      "size": 11649,
+      "modified": "2026-05-28"
     }
   ]
 }
